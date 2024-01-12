@@ -19,13 +19,13 @@ environment:
     Height:
       coeff: 0.02
     Lsmoothness1:
-      coeff: -4e-5
+      coeff: -4e-4
     Jsmoothness1:
-      coeff: -4e-5
+      coeff: -4e-4
     smoothness2:
-      coeff: -4e-5
+      coeff: -4e-3
     jointPos:
-      coeff: -4e-5
+      coeff: -4e-3
     pTarget:
       coeff: -1.5e-6
     torque:

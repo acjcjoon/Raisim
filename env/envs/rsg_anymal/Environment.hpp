@@ -45,7 +45,7 @@ namespace raisim {
             /// this is nominal configuration of anymal
             gc_init_ << 0, 0, 0.50, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8, -0.03, 0.4, -0.8, 0.03, -0.4, 0.8, -0.03, -0.4, 0.8,0.0, 2.62, -1.57, 0.0, 2.62, 0.0;
 
-            /// set pd gains
+            /// set pd
             Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
             jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(50.0);jointPgain.segment(6,12).setConstant(100.0);
 //          std::cout << jointPgain.transpose() << std::endl;
@@ -105,6 +105,15 @@ namespace raisim {
 //        visual_target2 = server_->addVisualBox("visual_target2",0.1,0.1,0.1,0,1,0,0.4);
                 visual_EEpos = server_->addVisualSphere("visual_EEpos",0.05,0,0,1,0.4);
             }
+//            rasim:Vec<3> EE;
+//            rasim:Vec<3> BS;
+//            rasim:Vec<3> MBS;
+
+//            auto EEFrameIndex_ = anymal_->getFrameIdxByName("kinova_joint_end_effector");
+//            auto MBSFrameIndex_ = anymal_->getFrameIdxByName("kinova_joint_jaco_mounting_block");
+//            anymal_->getFramePosition(EEFrameIndex_, EE);
+//            anymal_->getBasePosition(BS);
+//            anymal_->getFramePosition(MBSFrameIndex_, MBS);
         }
 
         void init() final { }
@@ -114,7 +123,7 @@ namespace raisim {
             anymal_->setState(gc_init_, gv_init_);
             updateObservation();
             if (visualizable_) {
-                Eigen::Vector3d des_pos(0.2*uniDist_(gen_)+2.0,0.2*uniDist_(gen_)-1.5,0.2*uniDist_(gen_)+0.6);
+                Eigen::Vector3d des_pos(0.2*uniDist_(gen_)+2.5,0.2*uniDist_(gen_)-1.5,0.2*uniDist_(gen_)+0.6);
                 visual_target->setPosition(des_pos);
                 TEEpos_ = visual_target->getPosition();
             }
@@ -142,12 +151,11 @@ namespace raisim {
 
             updateObservation();
 
-            double distance 0.6;
             double rinclination = 1.0;
             double rrewardgap = 1.0;
 
-            double Eerror = rrewardgap*(1/(1+std::exp(rinclination*(baseError_.head(2).norm()-distance))))+0.1;
-            double baerror = rrewardgap*(1/(1+std::exp(-rinclination*(baseError_.head(2).norm()-distance))))+0.1;
+            double Eerror = rrewardgap*(1/(1+std::exp(rinclination*(baseError_.head(2).norm()-0.6))))+0.1;
+            double baerror = rrewardgap*(1/(1+std::exp(-rinclination*(baseError_.head(2).norm()-0.6))))+0.1;
 
             if (visualizable_) {
 //          visual_target2 ->setPosition(TEEpos_);
@@ -198,11 +206,12 @@ namespace raisim {
 
 
 
-
+            Eigen::Vector3d distance;
+            distance <<0.35,0,0;
             auto EEFrameIndex_ = anymal_->getFrameIdxByName("kinova_joint_end_effector");
             anymal_->getFramePosition(EEFrameIndex_, PEEpos_);
             posError_ = TEEpos_-PEEpos_.e();
-            baseError_ = TEEpos_- gc_.head(3);
+            baseError_ = TEEpos_- (gc_.head(3)+rot.e()*distance);
             Eigen::Vector3d posError = rot.e().transpose() * (posError_);
             Eigen::Vector3d baseError = rot.e().transpose() * (baseError_);
 

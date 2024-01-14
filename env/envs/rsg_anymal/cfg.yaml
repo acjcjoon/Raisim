@@ -17,9 +17,9 @@ environment:
     basepos:
       coeff: 0.5
     Height:
-      coeff: 0.02
+      coeff: 0.04
     Lsmoothness1:
-      coeff: -4e-4
+      coeff: -8e-4
     Jsmoothness1:
       coeff: -4e-4
     smoothness2:

@@ -34,7 +34,6 @@ namespace raisim {
             /// get robot data
             gcDim_ = anymal_->getGeneralizedCoordinateDim();
             gvDim_ = anymal_->getDOF();
-//    std::cout << gvDim_ << std::endl;
             nJoints_ = gvDim_ - 6;
 
             /// initialize containers
@@ -64,7 +63,7 @@ namespace raisim {
             READ_YAML(double, action_std, cfg_["action_std"]) /// example of reading params from the config
             actionStd_.setConstant(action_std);
 
-            /// Reward coefficients
+            /// Reward coefficients sssss
             rewards_.initializeFromConfigurationFile (cfg["reward"]);
 
             /// indices of links that should not make contact with ground
@@ -73,6 +72,7 @@ namespace raisim {
             footIndices_.insert(anymal_->getBodyIdx("LH_SHANK"));
             footIndices_.insert(anymal_->getBodyIdx("RH_SHANK"));
             footIndices_.insert(anymal_->getBodyIdx("kinova_link_6"));
+
 
             auto RR_footIndex = anymal_->getBodyIdx("LF_SHANK");
             auto RL_footIndex = anymal_->getBodyIdx("RF_SHANK");
@@ -94,6 +94,11 @@ namespace raisim {
             posError_.setZero();
             TEEpos_.setZero();
             PEEpos_.setZero();
+            exforceX.setZero();
+            exforceY.setZero();
+            exforceZ.setZero();
+            basepos_.setZero();
+
 
             /// visualize if it is the first environment
             if (visualizable_) {
@@ -101,7 +106,7 @@ namespace raisim {
                 server_->launchServer();
                 server_->focusOn(anymal_);
                 visual_target = server_->addVisualSphere("visual_target",0.05,1,0,0,0.4);
-//      visual_target2 = server_->addVisualSphere("visual_target2",0.05,0,1,0,0.4);
+                external_force = server_->addVisualArrow("visual_force",0.25,0.5,1,0,0);
 //        visual_target2 = server_->addVisualBox("visual_target2",0.1,0.1,0.1,0,1,0,0.4);
                 visual_EEpos = server_->addVisualSphere("visual_EEpos",0.05,0,0,1,0.4);
             }
@@ -126,7 +131,16 @@ namespace raisim {
                 Eigen::Vector3d des_pos(0.2*uniDist_(gen_)+2.5,0.2*uniDist_(gen_)-1.5,0.2*uniDist_(gen_)+0.6);
                 visual_target->setPosition(des_pos);
                 TEEpos_ = visual_target->getPosition();
+                external_force->setPosition(basepos_);
+//                external_force->setPosition(1,1,1);
             }
+            double size =50.0;
+            exforceX << uniDist_(gen_),uniDist_(gen_),uniDist_(gen_);
+            exforceY << uniDist_(gen_),uniDist_(gen_),uniDist_(gen_);
+            exforceZ << uniDist_(gen_),uniDist_(gen_),uniDist_(gen_);
+            exforceX = size * exforceX;
+            exforceY = size * exforceY;
+            exforceZ = size * exforceZ;
         }
 
         float step(const Eigen::Ref<EigenVec>& action) final {
@@ -143,6 +157,13 @@ namespace raisim {
 //    pTarget_.segment(7,12) = gc_init_.segment(7,12);
             anymal_->setPdTarget(pTarget_, vTarget_);
 
+
+            forcetime += 0.01;
+            Eigen::Vector3d exforce3d(findQuadraticFunction(exforceX,forcetime),findQuadraticFunction(exforceY,forcetime),findQuadraticFunction(exforceZ,forcetime));
+            Eigen::Quaterniond quaternion;
+            quaternion = Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d::UnitZ(), exforce3d.normalized());
+            Eigen::Vector4d vector4d = quaternion.coeffs();
+
             for(int i=0; i< int(control_dt_ / simulation_dt_ + 1e-10); i++){
                 if(server_) server_->lockVisualizationServerMutex();
                 world_->integrate();
@@ -155,12 +176,20 @@ namespace raisim {
             double rrewardgap = 1.0;
 
             double Eerror = rrewardgap*(1/(1+std::exp(rinclination*(baseError_.head(2).norm()-0.6))))+0.1;
-            double baerror = rrewardgap*(1/(1+std::exp(-rinclination*(baseError_.head(2).norm()-0.6))))+0.1;
+            double baerror = rrewardgap*(1/(1+std::exp(-rinclination*(baseError_.head(2).norm()-1.0))))+0.001;
 
             if (visualizable_) {
 //          visual_target2 ->setPosition(TEEpos_);
                 visual_EEpos->setPosition(PEEpos_.e());
+                external_force->setPosition(basepos_);
+                external_force->setOrientation(vector4d);
+                anymal_->setExternalForce("kinova_link_base_to_kinova_link_base_inertia",exforce3d);
             }
+
+            double heightreward;
+//            relaxedLogBarrier(0.1,0.46,0.53,gc_(2),heightreward);
+            heightreward= (gc_(2)-0.47)*(gc_(2)-0.47);
+
             Eigen::VectorXd jointPosTemp(12), jointPosWeight(12);
             jointPosWeight << 1.0, 0.,0.,1.,0.,0.,1.,0.,0.,1.,0.,0.;
             jointPosTemp = gc_.segment(7,12) - gc_init_.segment(7,12);
@@ -169,9 +198,8 @@ namespace raisim {
 //      rewards_.record("footSlip", footSlip_.sum());
             rewards_.record("EEpos", Eerror*std::exp(-posError_.norm()));
             rewards_.record("basepos", baerror*std::exp(-baseError_.head(2).norm()));
-//      rewards_.record("Joint2", std::exp(-(gc_[20]-2.62)*(gc_[2]-2.62)));
-            rewards_.record("Height", std::exp(-(gc_[2]-0.46)*(gc_[2]-0.46)));
-//      rewards_.record("bodyOri", std::acos(bodyOri_) * std::acos(bodyOri_));
+            rewards_.record("Height", heightreward);
+
 
             rewards_.record("Lsmoothness1",(pTarget_.segment(7,12) - prevTarget_.segment(7,12)).squaredNorm());
             rewards_.record("Jsmoothness1",(pTarget_.tail(6) - prevTarget_.tail(6)).squaredNorm());
@@ -204,6 +232,10 @@ namespace raisim {
             bodyLinearVel_ = rot.e().transpose() * gv_.segment(0, 3);
             bodyAngularVel_ = rot.e().transpose() * gv_.segment(3, 3);
 
+            raisim::Vec<3> mbpos;
+            auto mbaseindex = anymal_->getFrameIdxByName("kinova_link_base_to_kinova_link_base_inertia");
+            anymal_->getFramePosition(mbaseindex, mbpos);
+            basepos_ = mbpos.e();
 
 
             Eigen::Vector3d distance;
@@ -222,7 +254,7 @@ namespace raisim {
                     bodyLinearVel_, bodyAngularVel_, /// body linear&angular velocity : 6
                     gv_.tail(18),
                     posError,
-                    baseError_.head(2);
+                    baseError.head(2);
         }
 
         void observe(Eigen::Ref<EigenVec> ob) final {
@@ -245,19 +277,50 @@ namespace raisim {
 
         void curriculumUpdate() { };
 
+        void relaxedLogBarrier(const double& delta,const double& alpha_lower,const double& alpha_upper,const double& x, double& y){
+            /// positive reward, boundary 밖에서 gradient 가 큼
+            double x_temp = x-alpha_lower;
+            // lower bound
+            if (x_temp < delta){
+                y = 0.5*(pow((x_temp-2*delta)/delta,2)-1) - log(delta);
+            }else{
+                y = -log(x_temp);
+            }
+            // upper bound
+            x_temp = -(x-alpha_upper);
+            if (x_temp < delta){
+                y += 0.5*(pow((x_temp-2*delta)/delta,2)-1) - log(delta);
+            }else{
+                y += -log(x_temp);
+            }
+            y *= -1;
+        }
+
+        double findQuadraticFunction(const Eigen::Vector3d randcoeffi, const double dt){
+            Eigen::Matrix3d timemat;
+            timemat << 1, 1, 1,
+                      4, 2, 1,
+                     16, 4, 1;
+            Eigen::Vector3d dtvec;
+            dtvec << dt*dt, dt, 1;
+            double result = dtvec.transpose()*timemat.inverse()*randcoeffi;
+            return  result;
+        }
+
     private:
         int gcDim_, gvDim_, nJoints_;
         bool visualizable_ = false;
         raisim::ArticulatedSystem* anymal_;
         raisim::Visuals* visual_target;
         raisim::Visuals* visual_EEpos;
+        raisim::Visuals* external_force;
 
         raisim::Visuals* visual_target2;
         Eigen::VectorXd gc_init_, gv_init_, gc_, gv_, pTarget_, pTarget12_,prevTarget_,prevPrevTarget_, vTarget_,true_contact;
-        double terminalRewardCoeff_ = -10.,bodyOri_;
+        double terminalRewardCoeff_ = -10.,forcetime;
         raisim::Vec<3> PEEpos_;
         Eigen::VectorXd actionMean_, actionStd_, obDouble_;
-        Eigen::Vector3d bodyLinearVel_, bodyAngularVel_, TEEpos_, posError_,baseError_;
+        Eigen::Vector3d bodyLinearVel_, bodyAngularVel_, TEEpos_, posError_,baseError_,basepos_,exforceX,exforceY,exforceZ;
         std::set<size_t> footIndices_;
 
         /// these variables are not in use. They are placed to show you how to create a random number sampler.

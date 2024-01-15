@@ -26,7 +26,7 @@ namespace raisim {
             world_ = std::make_unique<raisim::World>();
 
             /// add objects
-            anymal_ = world_->addArticulatedSystem(resourceDir_+"/test/anymal_b_simple_description/robots/anymal-kinova-collision.urdf");
+            anymal_ = world_->addArticulatedSystem(resourceDir_+"/test/anymal_b_simple_description/robots/anymal-kinova-collision-wrench.urdf");
             anymal_->setName("anymal");
             anymal_->setControlMode(raisim::ControlMode::PD_PLUS_FEEDFORWARD_TORQUE);
             world_->addGround();
@@ -42,18 +42,17 @@ namespace raisim {
             pTarget_.setZero(gcDim_); vTarget_.setZero(gvDim_); pTarget12_.setZero(nJoints_),prevTarget_.setZero(gcDim_),prevPrevTarget_.setZero(gcDim_);
 
             /// this is nominal configuration of anymal
-            gc_init_ << 0, 0, 0.50, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8, -0.03, 0.4, -0.8, 0.03, -0.4, 0.8, -0.03, -0.4, 0.8,0.0, 2.62, -1.57, 0.0, 2.62, 0.0;
+            gc_init_ << 0, 0, 0.50, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8, -0.03, 0.4, -0.8, 0.03, -0.4, 0.8, -0.03, -0.4, 0.8;
 
             /// set pd
             Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
-            jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(50.0);jointPgain.segment(6,12).setConstant(100.0);
-//          std::cout << jointPgain.transpose() << std::endl;
-            jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(0.2); jointDgain.segment(6,12).setConstant(0.2);
+            jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(50.0);
+            jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(0.2);
             anymal_->setPdGains(jointPgain, jointDgain);
             anymal_->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
             /// MUST BE DONE FOR ALL ENVIRONMENTS
-            obDim_ = 52;
+            obDim_ = 36;
             actionDim_ = nJoints_; actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
             obDouble_.setZero(obDim_);
 
@@ -71,29 +70,16 @@ namespace raisim {
             footIndices_.insert(anymal_->getBodyIdx("RF_SHANK"));
             footIndices_.insert(anymal_->getBodyIdx("LH_SHANK"));
             footIndices_.insert(anymal_->getBodyIdx("RH_SHANK"));
-            footIndices_.insert(anymal_->getBodyIdx("kinova_link_6"));
+
+//            auto RR_footIndex = anymal_->getBodyIdx("LF_SHANK");
+//            auto RL_footIndex = anymal_->getBodyIdx("RF_SHANK");
+//            auto FR_footIndex = anymal_->getBodyIdx("LH_SHANK");
+//            auto FL_footIndex = anymal_->getBodyIdx("RH_SHANK");
+
+//            true_contact.setZero();
 
 
-            auto RR_footIndex = anymal_->getBodyIdx("LF_SHANK");
-            auto RL_footIndex = anymal_->getBodyIdx("RF_SHANK");
-            auto FR_footIndex = anymal_->getBodyIdx("LH_SHANK");
-            auto FL_footIndex = anymal_->getBodyIdx("RH_SHANK");
-
-            true_contact.setZero();
-
-            //      for (const auto& element : footIndices_) {
-//          std::cout << ' ' << element;
-//      }
-//      std::cout << std::endl;
-//    EEFrameIndex_.insert(anymal->getBodyIdx("j2s6s200_link_finger_tip_2"));
-//      auto RR_footIndex = robot_->getBodyIdx("RR_calf");
-//      auto RL_footIndex = robot_->getBodyIdx("RL_calf");
-//      auto FR_footIndex = robot_->getBodyIdx("FR_calf");
-//      auto FL_footIndex = robot_->getBodyIdx("FL_calf");
-
-            posError_.setZero();
             TEEpos_.setZero();
-            PEEpos_.setZero();
             exforceX.setZero();
             exforceY.setZero();
             exforceZ.setZero();
@@ -107,8 +93,6 @@ namespace raisim {
                 server_->focusOn(anymal_);
                 visual_target = server_->addVisualSphere("visual_target",0.05,1,0,0,0.4);
                 external_force = server_->addVisualArrow("visual_force",0.25,0.5,1,0,0);
-//        visual_target2 = server_->addVisualBox("visual_target2",0.1,0.1,0.1,0,1,0,0.4);
-                visual_EEpos = server_->addVisualSphere("visual_EEpos",0.05,0,0,1,0.4);
             }
 //            rasim:Vec<3> EE;
 //            rasim:Vec<3> BS;
@@ -134,7 +118,8 @@ namespace raisim {
                 external_force->setPosition(basepos_);
 //                external_force->setPosition(1,1,1);
             }
-            double size =50.0;
+            forcetime = 0.0;
+            double size =5.0;
             exforceX << uniDist_(gen_),uniDist_(gen_),uniDist_(gen_);
             exforceY << uniDist_(gen_),uniDist_(gen_),uniDist_(gen_);
             exforceZ << uniDist_(gen_),uniDist_(gen_),uniDist_(gen_);
@@ -151,10 +136,8 @@ namespace raisim {
             pTarget12_ = pTarget12_.cwiseProduct(actionStd_);
             pTarget12_ += actionMean_;
             pTarget_.tail(nJoints_) = pTarget12_;
-//    pTarget_[22] = gc_init_[22];
-//    pTarget_[24] = gc_init_[24];
 
-//    pTarget_.segment(7,12) = gc_init_.segment(7,12);
+
             anymal_->setPdTarget(pTarget_, vTarget_);
 
 
@@ -172,15 +155,8 @@ namespace raisim {
 
             updateObservation();
 
-            double rinclination = 1.0;
-            double rrewardgap = 1.0;
-
-            double Eerror = rrewardgap*(1/(1+std::exp(rinclination*(baseError_.head(2).norm()-0.6))))+0.1;
-            double baerror = rrewardgap*(1/(1+std::exp(-rinclination*(baseError_.head(2).norm()-1.0))))+0.001;
 
             if (visualizable_) {
-//          visual_target2 ->setPosition(TEEpos_);
-                visual_EEpos->setPosition(PEEpos_.e());
                 external_force->setPosition(basepos_);
                 external_force->setOrientation(vector4d);
                 anymal_->setExternalForce("kinova_link_base_to_kinova_link_base_inertia",exforce3d);
@@ -192,16 +168,15 @@ namespace raisim {
 
             Eigen::VectorXd jointPosTemp(12), jointPosWeight(12);
             jointPosWeight << 1.0, 0.,0.,1.,0.,0.,1.,0.,0.,1.,0.,0.;
-            jointPosTemp = gc_.segment(7,12) - gc_init_.segment(7,12);
+            jointPosTemp = gc_.tail(nJoints_) - gc_init_.tail(nJoints_);
             jointPosTemp = jointPosWeight.cwiseProduct(jointPosTemp.eval());
-
 //      rewards_.record("footSlip", footSlip_.sum());
-            rewards_.record("EEpos", Eerror*std::exp(-posError_.norm()));
-            rewards_.record("basepos", baerror*std::exp(-baseError_.head(2).norm()));
+
+            rewards_.record("basepos", std::exp(-baseError_.head(2).norm()-0.6));
             rewards_.record("Height", heightreward);
 
 
-            rewards_.record("Lsmoothness1",(pTarget_.segment(7,12) - prevTarget_.segment(7,12)).squaredNorm());
+            rewards_.record("Lsmoothness1",(pTarget_.tail(nJoints_) - prevTarget_.tail(nJoints_)).squaredNorm());
             rewards_.record("Jsmoothness1",(pTarget_.tail(6) - prevTarget_.tail(6)).squaredNorm());
             rewards_.record("smoothness2", (pTarget_ - 2 * prevTarget_ + prevPrevTarget_).squaredNorm());
             rewards_.record("jointPos", jointPosTemp.squaredNorm());
@@ -210,9 +185,7 @@ namespace raisim {
 //    rewards_.record("bodyLinearVel", bodyLinearVel_.norm());
 //    rewards_.record("bodyAngularVel", bodyAngularVel_.norm());
 
-
 //    rewards_.record("torque", Tor.squaredNorm());
-
 
 //    rewards_.record("forwardvel", std::min(4.0,bodyLinearVel_[0]));
 //    std::cout <<"T1: "<<std::exp(-posError_.norm())<<std::endl;
@@ -236,24 +209,15 @@ namespace raisim {
             auto mbaseindex = anymal_->getFrameIdxByName("kinova_link_base_to_kinova_link_base_inertia");
             anymal_->getFramePosition(mbaseindex, mbpos);
             basepos_ = mbpos.e();
-
-
-            Eigen::Vector3d distance;
-            distance <<0.35,0,0;
-            auto EEFrameIndex_ = anymal_->getFrameIdxByName("kinova_joint_end_effector");
-            anymal_->getFramePosition(EEFrameIndex_, PEEpos_);
-            posError_ = TEEpos_-PEEpos_.e();
-            baseError_ = TEEpos_- (gc_.head(3)+rot.e()*distance);
-            Eigen::Vector3d posError = rot.e().transpose() * (posError_);
+            baseError_ = TEEpos_- basepos_;
             Eigen::Vector3d baseError = rot.e().transpose() * (baseError_);
 
 
             obDouble_ << gc_[2], /// body height : 1
                     rot.e().row(2).transpose(), /// body orientation : 3
-                    gc_.tail(18), /// joint angles : 12
+                    gc_.tail(12), /// joint angles : 12
                     bodyLinearVel_, bodyAngularVel_, /// body linear&angular velocity : 6
-                    gv_.tail(18),
-                    posError,
+                    gv_.tail(12),
                     baseError.head(2);
         }
 

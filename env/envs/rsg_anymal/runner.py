@@ -145,7 +145,7 @@ for update in range(1000000):
     avg_rewards.append(average_ll_performance)
 
     actor.update()
-    actor.distribution.enforce_minimum_std((torch.ones(18)*0.2).to(device))
+    actor.distribution.enforce_minimum_std((torch.ones(12)*0.2).to(device))
 
     # curriculum update. Implement it in Environment.hpp
     env.curriculum_callback()

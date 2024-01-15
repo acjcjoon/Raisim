@@ -18,8 +18,6 @@ environment:
       coeff: 0.01
     Lsmoothness1:
       coeff: -8e-4
-    Jsmoothness1:
-      coeff: -4e-4
     smoothness2:
       coeff: -4e-3
     jointPos:

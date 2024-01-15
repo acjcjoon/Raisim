@@ -46,7 +46,7 @@ namespace raisim {
 
             /// set pd
             Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
-            jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(50.0);
+            jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(100.0);
             jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(0.2);
             anymal_->setPdGains(jointPgain, jointDgain);
             anymal_->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
@@ -142,7 +142,7 @@ namespace raisim {
 
 
             forcetime += 0.01;
-            Eigen::Vector3d exforce3d(findQuadraticFunction(exforceX,forcetime),findQuadraticFunction(exforceY,forcetime),findQuadraticFunction(exforceZ,forcetime));
+            exforce3d << findQuadraticFunction(exforceX,forcetime),findQuadraticFunction(exforceY,forcetime),findQuadraticFunction(exforceZ,forcetime);
             Eigen::Quaterniond quaternion;
             quaternion = Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d::UnitZ(), exforce3d.normalized());
             Eigen::Vector4d vector4d = quaternion.coeffs();
@@ -177,7 +177,7 @@ namespace raisim {
 
 
             rewards_.record("Lsmoothness1",(pTarget_.tail(nJoints_) - prevTarget_.tail(nJoints_)).squaredNorm());
-            rewards_.record("Jsmoothness1",(pTarget_.tail(6) - prevTarget_.tail(6)).squaredNorm());
+//            rewards_.record("Jsmoothness1",(pTarget_.tail(6) - prevTarget_.tail(6)).squaredNorm());
             rewards_.record("smoothness2", (pTarget_ - 2 * prevTarget_ + prevPrevTarget_).squaredNorm());
             rewards_.record("jointPos", jointPosTemp.squaredNorm());
             rewards_.record("pTarget", (pTarget_-actionMean_).squaredNorm());
@@ -218,7 +218,8 @@ namespace raisim {
                     gc_.tail(12), /// joint angles : 12
                     bodyLinearVel_, bodyAngularVel_, /// body linear&angular velocity : 6
                     gv_.tail(12),
-                    baseError.head(2);
+                    baseError.head(2),
+                    rot.e().transpose() * exforce3d;
         }
 
         void observe(Eigen::Ref<EigenVec> ob) final {
@@ -284,7 +285,7 @@ namespace raisim {
         double terminalRewardCoeff_ = -10.,forcetime;
         raisim::Vec<3> PEEpos_;
         Eigen::VectorXd actionMean_, actionStd_, obDouble_;
-        Eigen::Vector3d bodyLinearVel_, bodyAngularVel_, TEEpos_, posError_,baseError_,basepos_,exforceX,exforceY,exforceZ;
+        Eigen::Vector3d bodyLinearVel_, bodyAngularVel_, TEEpos_, posError_,baseError_,basepos_,exforce3d,exforceX,exforceY,exforceZ;
         std::set<size_t> footIndices_;
 
         /// these variables are not in use. They are placed to show you how to create a random number sampler.

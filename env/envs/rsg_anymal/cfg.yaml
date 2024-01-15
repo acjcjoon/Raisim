@@ -12,15 +12,15 @@ environment:
   max_time: 4.0
   action_std: 0.3
   reward:
-    EEpos:
-      coeff: 0.5
     basepos:
       coeff: 0.5
+    barrierFootContact:
+      coeff: 0.03
     Height:
       coeff: 0.02
+    forwardVel:
+      coeff: 0.2
     Lsmoothness1:
-      coeff: -4e-4
-    Jsmoothness1:
       coeff: -4e-4
     smoothness2:
       coeff: -4e-3
@@ -29,7 +29,7 @@ environment:
     pTarget:
       coeff: -1.5e-6
     torque:
-      coeff: -4e-10
+      coeff: -4e-9
 
 architecture:
   policy_net: [ 128, 128 ]

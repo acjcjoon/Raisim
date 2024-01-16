@@ -14,14 +14,16 @@ environment:
   reward:
     basepos:
       coeff: 0.5
+    baseori:
+      coeff: 0.225
     barrierFootContact:
-      coeff: 0.03
+      coeff: 0.008
     Height:
       coeff: 0.02
     forwardVel:
-      coeff: 0.2
+      coeff: 0.6
     Lsmoothness1:
-      coeff: -4e-4
+      coeff: -4e-3
     smoothness2:
       coeff: -4e-3
     jointPos:
@@ -29,7 +31,7 @@ environment:
     pTarget:
       coeff: -1.5e-6
     torque:
-      coeff: -4e-9
+      coeff: -4e-7
 
 architecture:
   policy_net: [ 128, 128 ]

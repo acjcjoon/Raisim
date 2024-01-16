@@ -78,7 +78,6 @@ namespace raisim {
 
             true_contact.setZero();
 
-
             TEEpos_.setZero();
             exforceX.setZero();
             exforceY.setZero();
@@ -153,7 +152,7 @@ namespace raisim {
               }
           }
 
-            float gait_hz_ = 0.8;
+            float gait_hz_ = 0.5;
             Eigen::VectorXd footContactPhase_;
             footContactPhase_.setZero(4);
 
@@ -162,7 +161,6 @@ namespace raisim {
             footContactPhase_(1) = -footContactPhase_(0); // RL
             footContactPhase_(2) = -footContactPhase_(0); // FR
             footContactPhase_(3) = footContactPhase_(0); // FL
-
 
             phaseSin_(0) = sin(phase_ / gait_hz_ * 2 * 3.141592); // for observation
             phaseSin_(1) = cos(phase_ / gait_hz_ * 2 * 3.141592); // for observation
@@ -186,7 +184,7 @@ namespace raisim {
 //                anymal_->setExternalForce("kinova_link_base_to_kinova_link_base_inertia",exforce3d);
 //            }
             double distance = 0.5;
-           if (baseError_.head(2).norm() > distance){ /// walking
+           if (1){ /// walking baseError_.head(2).norm() > distance
               // footContactDouble_ -> limit_foot_contact 에 있도록 (-0.3,3) -> Gait Enforcing (요 -0.3 이 벗어나도 되는 범위)
               for(int i=0; i<4; i++) {
                   if ((bool)true_contact(i))
@@ -219,9 +217,10 @@ namespace raisim {
             jointPosTemp = jointPosWeight.cwiseProduct(jointPosTemp.eval());
 
             getLogBarReward();
-            rewards_.record("basepos", std::exp(-baseError_.norm()-0.6));
-            rewards_.record("forwardVel", std::min(0.5, bodyLinearVel_[0]));
-            rewards_.record("Height", heightreward);
+            rewards_.record("basepos", std::exp(-baseError_.norm()));
+//            rewards_.record("baseori", baseError_.normalized().transpose() * bodyLinearVel_.normalized());
+//            rewards_.record("forwardVel", std::min(0.5, bodyLinearVel_[0]));
+//            rewards_.record("Height", heightreward);
             rewards_.record("torque", anymal_->getGeneralizedForce().squaredNorm());
 
 //            rewards_.record("Lsmoothness1",(pTarget_.tail(nJoints_) - prevTarget_.tail(nJoints_)).squaredNorm());
@@ -253,7 +252,7 @@ namespace raisim {
             basepos_ = mbpos.e();
             baseError_ = TEEpos_- basepos_;
             baseError_ = rot.e().transpose() * (baseError_);
-
+//            std::cout << baseError_.transpose()<<std::endl;
 
             obDouble_ << gc_[2], /// body height : 1
                     rot.e().row(2).transpose(), /// body orientation : 3

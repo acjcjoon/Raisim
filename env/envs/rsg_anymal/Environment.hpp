@@ -152,15 +152,15 @@ namespace raisim {
               }
           }
 
-            float gait_hz_ = 0.5;
+            float gait_hz_ = 1.5;
             Eigen::VectorXd footContactPhase_;
             footContactPhase_.setZero(4);
 
             phase_ += control_dt_;
-            footContactPhase_(0) = sin(phase_ / gait_hz_ * 2 * 3.141592); // RR
-            footContactPhase_(1) = -footContactPhase_(0); // RL
-            footContactPhase_(2) = -footContactPhase_(0); // FR
-            footContactPhase_(3) = footContactPhase_(0); // FL
+            footContactPhase_(0) = 3*(sin((phase_ / gait_hz_ * 2 - 1.0/4.0)* 3.141592)+ 1.0/ sqrt(2.0)); // RR
+            footContactPhase_(1) = 3*(sin((phase_ / gait_hz_ * 2 + 3.0/4.0)* 3.141592)+ 1.0/ sqrt(2.0)); // RL
+            footContactPhase_(2) = 3*(sin((phase_ / gait_hz_ * 2 + 5.0/4.0)* 3.141592)+ 1.0/ sqrt(2.0)); // FR
+            footContactPhase_(3) = 3*(sin((phase_ / gait_hz_ * 2 + 1.0/4.0)* 3.141592)+ 1.0/ sqrt(2.0)); // FL
 
             phaseSin_(0) = sin(phase_ / gait_hz_ * 2 * 3.141592); // for observation
             phaseSin_(1) = cos(phase_ / gait_hz_ * 2 * 3.141592); // for observation
@@ -217,9 +217,9 @@ namespace raisim {
             jointPosTemp = jointPosWeight.cwiseProduct(jointPosTemp.eval());
 
             getLogBarReward();
-            rewards_.record("basepos", std::exp(-baseError_.norm()));
+//            rewards_.record("basepos", std::exp(-baseError_.norm()));
 //            rewards_.record("baseori", baseError_.normalized().transpose() * bodyLinearVel_.normalized());
-//            rewards_.record("forwardVel", std::min(0.5, bodyLinearVel_[0]));
+            rewards_.record("forwardVel", std::min(0.5, bodyLinearVel_[0]));
 //            rewards_.record("Height", heightreward);
             rewards_.record("torque", anymal_->getGeneralizedForce().squaredNorm());
 
@@ -289,7 +289,7 @@ namespace raisim {
             double tempReward = 0.0;
 
             Eigen::Vector2d limitFootContact_;
-            limitFootContact_<< -0.3, 3;
+            limitFootContact_<< -0.3, 11.0;
 //      /// Log Barrier - limit_joint_pos
 //      for (int i = 0; i < 4; i++) {
 //          for (int j = 0; j < 3; j++) {
@@ -330,7 +330,7 @@ namespace raisim {
 
             // Log Barrier - limit_foot_contact
             for (int i = 0; i < 4; i++) {
-                relaxedLogBarrier(0.1, limitFootContact_(0), limitFootContact_(1), footContactDouble_(i), tempReward);
+                relaxedLogBarrier(0.05, limitFootContact_(0), limitFootContact_(1), footContactDouble_(i), tempReward);
                 barrierFootContact += tempReward;
             }
 //      // Log Barrier - limit_foot_clearance

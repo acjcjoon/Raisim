@@ -12,25 +12,32 @@ environment:
   max_time: 4.0
   action_std: 0.3
   reward:
-    EEpos:
-      coeff: 0.5
-    basepos:
-      coeff: 0.5
-    Height:
-      coeff: 0.04
-    Lsmoothness1:
-      coeff: -8e-4
-    Jsmoothness1:
-      coeff: -4e-4
+    comAngularVel:
+      coeff: 0.3
+    comLinearVel:
+      coeff: 0.3
+    footSlip:
+      coeff: -4e-3
     smoothness2:
+      coeff: -4e-3
+    torque:
       coeff: -4e-3
     jointPos:
       coeff: -4e-3
-    pTarget:
-      coeff: -1.5e-6
-    torque:
-      coeff: -4e-10
-
+    footPos:
+      coeff: -4e-3
+    barrierJointPos:
+      coeff: 1e-1
+    barrierBaseMotion:
+      coeff: 1e-1
+    barrierJointVel:
+      coeff: 1e-1
+    barrierTargetVel:
+      coeff: 1e-1
+    barrierFootContact:
+      coeff: 1e-1
+    barrierFootClearance:
+      coeff: 1e-1
 architecture:
   policy_net: [ 128, 128 ]
   value_net: [ 128, 128 ]

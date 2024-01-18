@@ -51,6 +51,10 @@ class Reward {
     rewards_[name].integral += rewards_[name].reward;
   }
 
+  float getReward(const std::string& name) {
+      return rewards_[name].integral;
+    }
+
   float sum() {
     float sum = 0.f;
     for(auto& rw: rewards_)

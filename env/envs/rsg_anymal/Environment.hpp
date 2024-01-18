@@ -131,8 +131,8 @@ namespace raisim {
                 server_ = std::make_unique<raisim::RaisimServer>(world_.get());
                 server_->launchServer();
                 server_->focusOn(anymal_);
-                arrows_.push_back(server_->addVisualArrow("command_xy",0.1,0.05,0,1,0,1));
-                arrows_.push_back(server_->addVisualArrow("command_yaw",0.1,0.05,1,0,0,1));
+                arrows_xy = server_->addVisualArrow("command_xy",0.1,0.05,0,1,0,1);
+                arrows_yaw = server_->addVisualArrow("command_yaw",0.1,0.05,1,0,0,1);
 //                visual_target = server_->addVisualSphere("visual_target",0.05,1,0,0,0.4);
 //                external_force = server_->addVisualArrow("visual_force",0.25,0.5,1,0,0);
             }
@@ -198,7 +198,7 @@ namespace raisim {
                 updateObservation();
                 avgReward += getNegPosReward();
                 barrierReward_+= getLogBarReward();
-                visualizeCommand();
+//                visualizeCommand();
             }
 
             avgReward /= (control_dt_ / simulation_dt_ + 1e-10);
@@ -206,7 +206,7 @@ namespace raisim {
             updateHistory();
 
 
-            return avgReward;
+            return rewards_.sum();
         }
 
         void updateObservation() {
@@ -227,11 +227,10 @@ namespace raisim {
             for(auto& contact: anymal_->getContacts()){
                 for (size_t i=0; i<4; i++){
                     if(contact.getlocalBodyIndex() == footIndices_[i]){
-                        footContact_(i) = 1;
+                        footContact_(i) = true;
                     }
                 }
             }
-
 
             obDouble_ << rot.e().row(2).transpose(), /// body orientation : 3
                     gc_.tail(12), /// joint angles : 12
@@ -299,13 +298,13 @@ namespace raisim {
             arrow_pos_offset = rot_robot * arrow_pos_offset.eval();
             quaternion = rot_robot.eval() * rot_pitch_90 * rot_command;
 
-            arrows_[0]->setCylinderSize(0.2,command.head(2).norm()*0.3);
-            arrows_[0]->setPosition(gc_head_7.head(3) + arrow_pos_offset);
-            arrows_[0]->setOrientation(quaternion.w(),quaternion.x(),quaternion.y(),quaternion.z());
+            arrows_xy-> setCylinderSize(0.2,command.head(2).norm()*0.3);
+            arrows_xy->setPosition(gc_head_7.head(3) + arrow_pos_offset);
+            arrows_xy->setOrientation(quaternion.w(),quaternion.x(),quaternion.y(),quaternion.z());
 
-            arrows_[1]->setCylinderSize(0.2,command(2)*0.3);
-            arrows_[1]->setPosition(gc_head_7.head(3) + arrow_pos_offset);
-            arrows_[1]->setOrientation(gc_head_7.segment(3,4));
+            arrows_yaw->setCylinderSize(0.2,command(2)*0.3);
+            arrows_yaw->setPosition(gc_head_7.head(3) + arrow_pos_offset);
+            arrows_yaw->setOrientation(gc_head_7.segment(3,4));
         }
 
         float getNegPosReward(){
@@ -384,7 +383,7 @@ namespace raisim {
 //                    return true;
             for(auto& contact: anymal_->getContacts())
                 if (std::find(footIndices_.begin(), footIndices_.end(), contact.getlocalBodyIndex()) == footIndices_.end()) {
-                 return true;
+                    return true;
                 }
 
             terminalReward = 0.f;
@@ -434,56 +433,56 @@ namespace raisim {
             double tempReward = 0.0;
 
 
-      /// Log Barrier - limit_joint_pos
-      for (int i = 0; i < 4; i++) {
-          for (int j = 0; j < 3; j++) {
-              int index_joint = i * 3 + j;
-              //         relaxedLogBarrier(0.09,limitJointPos_(index_leg,0),limitJointPos_(index_leg,1),gc_(7+index_leg),tempReward);
-              relaxedLogBarrier(0.08, limitJointPos_(index_joint, 0), limitJointPos_(index_joint, 1),
-                                gc_(7 + index_joint), tempReward);
-              barrierJointPos += tempReward;
-              //        std::cout << index_leg<<" th joint : " << tempReward << std::endl;
-          }
-      }
-      // Log Barrier - limit_body_height
+            /// Log Barrier - limit_joint_pos
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 3; j++) {
+                    int index_joint = i * 3 + j;
+                    //         relaxedLogBarrier(0.09,limitJointPos_(index_leg,0),limitJointPos_(index_leg,1),gc_(7+index_leg),tempReward);
+                    relaxedLogBarrier(0.08, limitJointPos_(index_joint, 0), limitJointPos_(index_joint, 1),
+                                      gc_(7 + index_joint), tempReward);
+                    barrierJointPos += tempReward;
+                    //        std::cout << index_leg<<" th joint : " << tempReward << std::endl;
+                }
+            }
+            // Log Barrier - limit_body_height
 //      for (int i = 0; i < 2; i++) {
 //          relaxedLogBarrier(0.04, limitBodyHeight_(0), limitBodyHeight_(1), bodyFrameHeight_(i), tempReward);
 //          barrierBodyHeight += tempReward;
 //      }
 
-      // Log Barrier - limit_base_motion
-      relaxedLogBarrier(0.2, limitBaseMotion_(0, 0), limitBaseMotion_(0, 1), bodyLinearVel_(2), tempReward);
-      barrierBaseMotion += tempReward;
+            // Log Barrier - limit_base_motion
+            relaxedLogBarrier(0.2, limitBaseMotion_(0, 0), limitBaseMotion_(0, 1), bodyLinearVel_(2), tempReward);
+            barrierBaseMotion += tempReward;
 
-      for (int i = 0; i < 2; i++) {
-          relaxedLogBarrier(0.3, limitBaseMotion_(1, 0), limitBaseMotion_(1, 1), bodyAngularVel_(i), tempReward);
-          barrierBaseMotion += tempReward;
-      }
+            for (int i = 0; i < 2; i++) {
+                relaxedLogBarrier(0.3, limitBaseMotion_(1, 0), limitBaseMotion_(1, 1), bodyAngularVel_(i), tempReward);
+                barrierBaseMotion += tempReward;
+            }
 
-      // Log Barrier - limit_joint_vel
-      for (int i = 0; i < 12; i++) {
-          relaxedLogBarrier(2.0, limitJointVel_(0), limitJointVel_(1), gv_(6 + i), tempReward);
-          barrierJointVel += tempReward;
-      }
+            // Log Barrier - limit_joint_vel
+            for (int i = 0; i < 12; i++) {
+                relaxedLogBarrier(2.0, limitJointVel_(0), limitJointVel_(1), gv_(6 + i), tempReward);
+                barrierJointVel += tempReward;
+            }
 
-      // Log Barrier - limit_target_vel
-      relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyLinearVel_(0) - command_(0), tempReward);
-      barrierTargetVel += tempReward;
-      relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyLinearVel_(1) - command_(1), tempReward);
-      barrierTargetVel += tempReward;
-      relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyAngularVel_(2) - command_(2), tempReward);
-      barrierTargetVel += tempReward;
+            // Log Barrier - limit_target_vel
+            relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyLinearVel_(0) - command_(0), tempReward);
+            barrierTargetVel += tempReward;
+            relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyLinearVel_(1) - command_(1), tempReward);
+            barrierTargetVel += tempReward;
+            relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyAngularVel_(2) - command_(2), tempReward);
+            barrierTargetVel += tempReward;
 
-      // Log Barrier - limit_foot_contact
-      for (int i = 0; i < 4; i++) {
-          relaxedLogBarrier(0.1, limitFootContact_(0), limitFootContact_(1), footContactDouble_(i), tempReward);
-          barrierFootContact += tempReward;
-      }
-      // Log Barrier - limit_foot_clearance
-      for (int i = 0; i < 4; i++) {
-          relaxedLogBarrier(0.01, limitFootClearance_(0), limitFootClearance_(1), footClearance_(i), tempReward);
-          barrierFootClearance += tempReward;
-      }
+            // Log Barrier - limit_foot_contact
+            for (int i = 0; i < 4; i++) {
+                relaxedLogBarrier(0.1, limitFootContact_(0), limitFootContact_(1), footContactDouble_(i), tempReward);
+                barrierFootContact += tempReward;
+            }
+            // Log Barrier - limit_foot_clearance
+            for (int i = 0; i < 4; i++) {
+                relaxedLogBarrier(0.01, limitFootClearance_(0), limitFootClearance_(1), footClearance_(i), tempReward);
+                barrierFootClearance += tempReward;
+            }
 
 //      if (barrierFootClearance < -40) {
 ////          std::cout << "barrierJointPos : " <<  barrierJointPos << std::endl;
@@ -496,52 +495,52 @@ namespace raisim {
 ////                std::cout << "foot clearance : " << footClearance_.transpose() << std::endl;
 //      }
 
-      double logClip = -500.0;
-      barrierJointPos = fmax(barrierJointPos, logClip);           /// 여기 밖 부분은 gradient 안 받겠다
-      barrierBaseMotion = fmax(barrierBaseMotion,logClip);
-      barrierJointVel = fmax(barrierJointVel,logClip);
-      barrierTargetVel = fmax(barrierTargetVel,logClip);
-      barrierFootContact = fmax(barrierFootContact,logClip);
-      barrierFootClearance = fmax(barrierFootClearance,logClip);
-      rewards_.record("barrierJointPos", barrierJointPos);
+            double logClip = -500.0;
+            barrierJointPos = fmax(barrierJointPos, logClip);           /// 여기 밖 부분은 gradient 안 받겠다
+            barrierBaseMotion = fmax(barrierBaseMotion,logClip);
+            barrierJointVel = fmax(barrierJointVel,logClip);
+            barrierTargetVel = fmax(barrierTargetVel,logClip);
+            barrierFootContact = fmax(barrierFootContact,logClip);
+            barrierFootClearance = fmax(barrierFootClearance,logClip);
+            rewards_.record("barrierJointPos", barrierJointPos);
 //      rewards_.record("barrierBodyHeight", barrierBodyHeight);
-      rewards_.record("barrierBaseMotion", barrierBaseMotion);
-      rewards_.record("barrierJointVel", barrierJointVel);
-      rewards_.record("barrierTargetVel", barrierTargetVel);
-      rewards_.record("barrierFootContact", barrierFootContact);
-      rewards_.record("barrierFootClearance", barrierFootClearance);
+            rewards_.record("barrierBaseMotion", barrierBaseMotion);
+            rewards_.record("barrierJointVel", barrierJointVel);
+            rewards_.record("barrierTargetVel", barrierTargetVel);
+            rewards_.record("barrierFootContact", barrierFootContact);
+            rewards_.record("barrierFootClearance", barrierFootClearance);
 
-      float logBarReward =  (float)(1e-1*(barrierJointPos + barrierBaseMotion + barrierJointVel + barrierTargetVel + barrierFootContact + barrierFootClearance));
+            float logBarReward =  (float)(1e-1*(barrierJointPos + barrierBaseMotion + barrierJointVel + barrierTargetVel + barrierFootContact + barrierFootClearance));
 //      rewards_.record("relaxedLog", logBarReward); /// relaxed log barrier
-      return  logBarReward;
+            return  logBarReward;
         }
 
-       void updateFootToTerrain(){
-           Eigen::Matrix<double, 3, 5> sample_point;
-           double point = 0.05; /// foot size
-           sample_point.col(0) << point, 0.0, 0.0;
-           sample_point.col(1) << 0.0, point, 0.0;
-           sample_point.col(2) << -point, 0.0, 0.0;
-           sample_point.col(3) << 0.0, -point, 0.0;
-           sample_point.col(4).setZero();
-           for (int i = 0; i < 4; i++) {
-               sample_point.col(i) = rot.e().transpose() * sample_point.col(i).eval();
-           }
-           Eigen::Matrix<double, 5, 1> temp_foot;
-           Eigen::Matrix<double, 3, 1> temp3;
-           for (int k = 0; k < 4; k++) {
-               for (int i = 0; i < 5; i++) {
-                   temp3 = footPos_[k].e() + sample_point.col(i);
-                   footToTerrain_(5 * k + i) = footPos_[k].e()(2) - 0.0;
+        void updateFootToTerrain(){
+            Eigen::Matrix<double, 3, 5> sample_point;
+            double point = 0.05; /// foot size
+            sample_point.col(0) << point, 0.0, 0.0;
+            sample_point.col(1) << 0.0, point, 0.0;
+            sample_point.col(2) << -point, 0.0, 0.0;
+            sample_point.col(3) << 0.0, -point, 0.0;
+            sample_point.col(4).setZero();
+            for (int i = 0; i < 4; i++) {
+                sample_point.col(i) = rot.e().transpose() * sample_point.col(i).eval();
+            }
+            Eigen::Matrix<double, 5, 1> temp_foot;
+            Eigen::Matrix<double, 3, 1> temp3;
+            for (int k = 0; k < 4; k++) {
+                for (int i = 0; i < 5; i++) {
+                    temp3 = footPos_[k].e() + sample_point.col(i);
+                    footToTerrain_(5 * k + i) = footPos_[k].e()(2) - 0.0;
 //                   footToTerrain_(5 * k + i) = footPos_[k].e()(2) - heightMap_->getHeight(temp3(0), temp3(1));
-               }
-           }
+                }
+            }
 //            if (abs(footToTerrain_.minCoeff()) >  3.0){ /// print error !!!
 //               std::cout << "gc_[2] : " << gc_[2] << std::endl;
 //               std::cout << "height map : " << heightMap_->getHeight(temp3(0), temp3(1)) <<  std::endl;
 //               std::cout << "Error too big here : " << footToTerrain_.transpose() << std::endl;
 //           }
-       }
+        }
 
         void relaxedLogBarrier(const double& delta,const double& alpha_lower,const double& alpha_upper,const double& x, double& y){
             /// positive reward, boundary 밖에서 gradient 가 큼
@@ -567,13 +566,14 @@ namespace raisim {
         int gcDim_, gvDim_, nJoints_;
         bool visualizable_ = false;
         raisim::ArticulatedSystem* anymal_;
-//        raisim::Visuals* visual_target;
+        raisim::Visuals* arrows_xy;
+        raisim::Visuals* arrows_yaw;
 //        raisim::Visuals* visual_EEpos;
 //        raisim::Visuals* external_force;
 //        raisim::Visuals* visual_target2;
+//        std::vector<raisim::Visuals*> arrows_;
 
         raisim::Mat<3,3> rot;
-        std::vector<raisim::Visuals*> arrows_;
         Eigen::VectorXd gc_init_, gv_init_, gc_, gv_;
         double barrierReward_;
         double terminalRewardCoeff_ = -10.0;

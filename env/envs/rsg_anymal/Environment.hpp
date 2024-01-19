@@ -207,7 +207,6 @@ namespace raisim {
             barrierReward_ /= (control_dt_ / simulation_dt_ + 1e-10);
             updateHistory();
 
-
             return rewards_.sum();
         }
 
@@ -234,6 +233,40 @@ namespace raisim {
                 }
             }
 
+            updateFootToTerrain();
+            /// for gait enforcing & foot clearance
+            phase_ += simulation_dt_;
+            footContactPhase_(0) = sin(phase_/gait_hz_ * 2*3.141592); // RR
+            footContactPhase_(1) = -footContactPhase_(0); // RL
+            footContactPhase_(2) = -footContactPhase_(0); // FR
+            footContactPhase_(3) = footContactPhase_(0); // FL
+
+            phaseSin_(0) = sin(phase_/gait_hz_ * 2*3.141592); // for observation
+            phaseSin_(1) = cos(phase_/gait_hz_ * 2*3.141592); // for observation
+//
+            if (1) { /// walking
+                /// footContactDouble_ -> limit_foot_contact 에 있도록 (-0.3,3) -> Gait Enforcing (요 -0.3 이 벗어나도 되는 범위)
+                for (int i = 0; i < 4; i++) {
+                    if (footContact_(i)) { footContactDouble_(i) = 1.0 * footContactPhase_(i); }
+                    else { footContactDouble_(i) = -1.0 * footContactPhase_(i); }
+                }
+                /// footClearance_ -> limit_foot_clearance 에 있도록 (-0.12,0.12) -> foot 드는 거 enforcing
+                double desiredFootZPosition = 0.15;
+                for (int i = 0; i < 4; i++) {
+                    if (footContactPhase_(i) < -0.6) { /// during swing, 전체시간의 33 %
+                        footClearance_(i) = footToTerrain_.segment(i * 5, 5).minCoeff() -desiredFootZPosition;
+                        // 대략, 0.17 sec, 0 보다 크거나 같으면 됨 (enforcing clearance)
+                    } else { footClearance_(i) = 0.0; } // max reward (not enforcing clearance)
+                }
+            }
+//            } else { /// under standingMode_
+//                /// standingMode_ 는 zero command 로 부터 유추 가능, command 는 obs 이기 때문에, robot 은 standingMode_인지 아닌지 충분히 알 수 있음
+//                for (int i=0; i<4; i++){
+//                    footContactDouble_(i) = 1.0; // around max reward, where this value should go under (-0.3,3)
+//                    footClearance_(i) = 0.0; // max reward (not enforcing clearance)
+//                }
+//            }
+
             obDouble_ << rot.e().row(2).transpose(), /// body orientation : 3
                     gc_.tail(12), /// joint angles : 12
                     gv_.tail(12), /// joint velocity 12
@@ -246,9 +279,8 @@ namespace raisim {
                     rot.e().transpose() * (footPos_[2].e() - gc_.head(3)), rot.e().transpose() * (footPos_[3].e() - gc_.head(3)), /// relative foot position with respect to the body COM, expressed in the body frame 12
                     command_, /// command 3
                     phaseSin_(0),phaseSin_(1), //// phase encoding 2
-                    footClearance_,  ////footClearance_ 4
+                    footClearance_,  //// footClearance_ 4
                     footContact_.cast<double>(); ////footContact_ 4
-
         }
 
         void computeTorque(){
@@ -267,6 +299,7 @@ namespace raisim {
 //            std::cout << "afterenForce : " << tempGenForce.transpose() << std::endl;
             genForceTargetHist_.push_back(tempGenForce);
         }
+
         void updateHistory(){
             prevPrevTarget_ = prevTarget_;
             prevTarget_ = pTarget_;
@@ -279,7 +312,6 @@ namespace raisim {
         }
 
         void visualizeCommand(){
-
 
             Eigen::Matrix<double,3,3> rot_robot, rot_pitch_90, rot_command;
             Eigen::Quaterniond quaternion;
@@ -298,16 +330,16 @@ namespace raisim {
             theta_command = -atan2(command(1),command(0));
             rot_command << 1,0,0,0,cos(theta_command),-sin(theta_command),0,sin(theta_command),cos(theta_command);
 
-            arrow_pos_offset << 0,0,0.2;
+            arrow_pos_offset << 0,0,0.4;
             arrow_pos_offset = rot_robot * arrow_pos_offset.eval();
             quaternion = rot_robot.eval() * rot_pitch_90 * rot_command;
 
             if (visualizable_) {
-                arrows_xy->setCylinderSize(0.2, command.head(2).norm() * 0.5);
+                arrows_xy->setCylinderSize(0.3, command.head(2).norm() * 0.4);
                 arrows_xy->setPosition(gc_head_7.head(3) + arrow_pos_offset);
                 arrows_xy->setOrientation(quaternion.w(), quaternion.x(), quaternion.y(), quaternion.z());
 
-                arrows_yaw->setCylinderSize(0.2, command(2) * 0.5);
+                arrows_yaw->setCylinderSize(0.3, command(2) * 0.4);
                 arrows_yaw->setPosition(gc_head_7.head(3) + arrow_pos_offset);
                 arrows_yaw->setOrientation(gc_head_7.segment(3, 4));
             }
@@ -400,44 +432,9 @@ namespace raisim {
         void curriculumUpdate() { };
 
         float getLogBarReward(){
-            /// for gait enforcing & foot clearance
-            phase_ += simulation_dt_;
-            footContactPhase_(0) = sin(phase_/gait_hz_ * 2*3.141592); // RR
-            footContactPhase_(1) = -footContactPhase_(0); // RL
-            footContactPhase_(2) = -footContactPhase_(0); // FR
-            footContactPhase_(3) = footContactPhase_(0); // FL
-
-            phaseSin_(0) = sin(phase_/gait_hz_ * 2*3.141592); // for observation
-            phaseSin_(1) = cos(phase_/gait_hz_ * 2*3.141592); // for observation
-//
-            if (1) { /// walking
-                /// footContactDouble_ -> limit_foot_contact 에 있도록 (-0.3,3) -> Gait Enforcing (요 -0.3 이 벗어나도 되는 범위)
-                for (int i = 0; i < 4; i++) {
-                    if (footContact_(i)) { footContactDouble_(i) = 1.0 * footContactPhase_(i); }
-                    else { footContactDouble_(i) = -1.0 * footContactPhase_(i); }
-                }
-                /// footClearance_ -> limit_foot_clearance 에 있도록 (-0.12,0.12) -> foot 드는 거 enforcing
-                double desiredFootZPosition = 0.15;
-                for (int i = 0; i < 4; i++) {
-                    if (footContactPhase_(i) < -0.6) { /// during swing, 전체시간의 33 %
-                        footClearance_(i) =
-                                footToTerrain_.segment(i * 5, 5).minCoeff() -
-                                desiredFootZPosition; // 대략, 0.17 sec, 0 보다 크거나 같으면 됨 (enforcing clearance)
-                    } else { footClearance_(i) = 0.0; } // max reward (not enforcing clearance)
-                }
-            }
-//            } else { /// under standingMode_
-//                /// standingMode_ 는 zero command 로 부터 유추 가능, command 는 obs 이기 때문에, robot 은 standingMode_인지 아닌지 충분히 알 수 있음
-//                for (int i=0; i<4; i++){
-//                    footContactDouble_(i) = 1.0; // around max reward, where this value should go under (-0.3,3)
-//                    footClearance_(i) = 0.0; // max reward (not enforcing clearance)
-//                }
-//            }
-
             /// compute barrier reward
             double barrierJointPos = 0.0, barrierBodyHeight = 0.0, barrierBaseMotion = 0.0, barrierJointVel = 0.0, barrierTargetVel = 0.0, barrierFootContact = 0.0, barrierFootClearance = 0.0;
             double tempReward = 0.0;
-
 
             /// Log Barrier - limit_joint_pos
             for (int i = 0; i < 4; i++) {

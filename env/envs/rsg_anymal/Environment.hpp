@@ -99,7 +99,7 @@ namespace raisim {
 
 
             for (int i=0;i<4;i++){
-                if(i ==0 || i == 3){
+                if(i == 1 || i == 3){
                     limitJointPos_.row(i*3+0) << -0.03-0.523599,-0.03+0.523599;
                 }  else {
                     limitJointPos_.row(i*3+0) << 0.03-0.523599,0.03+0.523599;
@@ -131,8 +131,8 @@ namespace raisim {
                 server_ = std::make_unique<raisim::RaisimServer>(world_.get());
                 server_->launchServer();
                 server_->focusOn(anymal_);
-                arrows_xy = server_->addVisualArrow("command_xy",0.1,0.05,0,1,0,1);
-                arrows_yaw = server_->addVisualArrow("command_yaw",0.1,0.05,1,0,0,1);
+                arrows_xy = server_->addVisualArrow("command_xy",0.1,0.3,0,1,0,1);
+                arrows_yaw = server_->addVisualArrow("command_yaw",0.1,0.3,1,0,0,1);
 //                visual_target = server_->addVisualSphere("visual_target",0.05,1,0,0,0.4);
 //                external_force = server_->addVisualArrow("visual_force",0.25,0.5,1,0,0);
             }
@@ -163,6 +163,8 @@ namespace raisim {
                 command_(0) = (command_(0) < -1.0) ? command_(0)+1.2 : command_(0);           // 뒤로가는 건 max -1.0
 //            command_ << maxCommand/2 * (uniDist_(gen_)+1), 0, 0;     // [lix x max, 0.6, 0.6]
             } while (command_.norm() < 0.2);
+
+//            std::cout << command_.transpose() << std::endl;
 
             for (auto& vec : genForceTargetHist_) { vec.setZero(); }
             phase_ = 0.0;
@@ -198,7 +200,7 @@ namespace raisim {
                 updateObservation();
                 avgReward += getNegPosReward();
                 barrierReward_+= getLogBarReward();
-//                visualizeCommand();
+                visualizeCommand();
             }
 
             avgReward /= (control_dt_ / simulation_dt_ + 1e-10);
@@ -277,6 +279,8 @@ namespace raisim {
         }
 
         void visualizeCommand(){
+
+
             Eigen::Matrix<double,3,3> rot_robot, rot_pitch_90, rot_command;
             Eigen::Quaterniond quaternion;
             Eigen::Vector3d command;
@@ -294,17 +298,19 @@ namespace raisim {
             theta_command = -atan2(command(1),command(0));
             rot_command << 1,0,0,0,cos(theta_command),-sin(theta_command),0,sin(theta_command),cos(theta_command);
 
-            arrow_pos_offset << 0,0,0.15;
+            arrow_pos_offset << 0,0,0.2;
             arrow_pos_offset = rot_robot * arrow_pos_offset.eval();
             quaternion = rot_robot.eval() * rot_pitch_90 * rot_command;
 
-            arrows_xy-> setCylinderSize(0.2,command.head(2).norm()*0.3);
-            arrows_xy->setPosition(gc_head_7.head(3) + arrow_pos_offset);
-            arrows_xy->setOrientation(quaternion.w(),quaternion.x(),quaternion.y(),quaternion.z());
+            if (visualizable_) {
+                arrows_xy->setCylinderSize(0.2, command.head(2).norm() * 0.5);
+                arrows_xy->setPosition(gc_head_7.head(3) + arrow_pos_offset);
+                arrows_xy->setOrientation(quaternion.w(), quaternion.x(), quaternion.y(), quaternion.z());
 
-            arrows_yaw->setCylinderSize(0.2,command(2)*0.3);
-            arrows_yaw->setPosition(gc_head_7.head(3) + arrow_pos_offset);
-            arrows_yaw->setOrientation(gc_head_7.segment(3,4));
+                arrows_yaw->setCylinderSize(0.2, command(2) * 0.5);
+                arrows_yaw->setPosition(gc_head_7.head(3) + arrow_pos_offset);
+                arrows_yaw->setOrientation(gc_head_7.segment(3, 4));
+            }
         }
 
         float getNegPosReward(){
@@ -397,9 +403,9 @@ namespace raisim {
             /// for gait enforcing & foot clearance
             phase_ += simulation_dt_;
             footContactPhase_(0) = sin(phase_/gait_hz_ * 2*3.141592); // RR
-            footContactPhase_(1) = footContactPhase_(0); // RL
+            footContactPhase_(1) = -footContactPhase_(0); // RL
             footContactPhase_(2) = -footContactPhase_(0); // FR
-            footContactPhase_(3) = -footContactPhase_(0); // FL
+            footContactPhase_(3) = footContactPhase_(0); // FL
 
             phaseSin_(0) = sin(phase_/gait_hz_ * 2*3.141592); // for observation
             phaseSin_(1) = cos(phase_/gait_hz_ * 2*3.141592); // for observation
@@ -502,7 +508,7 @@ namespace raisim {
             barrierTargetVel = fmax(barrierTargetVel,logClip);
             barrierFootContact = fmax(barrierFootContact,logClip);
             barrierFootClearance = fmax(barrierFootClearance,logClip);
-            rewards_.record("barrierJointPos", barrierJointPos);
+//            rewards_.record("barrierJointPos", barrierJointPos);
 //      rewards_.record("barrierBodyHeight", barrierBodyHeight);
             rewards_.record("barrierBaseMotion", barrierBaseMotion);
             rewards_.record("barrierJointVel", barrierJointVel);

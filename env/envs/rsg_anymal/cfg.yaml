@@ -13,31 +13,31 @@ environment:
   action_std: 0.3
   reward:
     comAngularVel:
-      coeff: 0.3
+      coeff: 5.0
     comLinearVel:
-      coeff: 0.3
+      coeff: 5.0
     footSlip:
       coeff: -4e-3
     smoothness2:
       coeff: -4e-3
     torque:
-      coeff: -4e-3
+      coeff: -4e-6
     jointPos:
       coeff: -4e-3
     footPos:
       coeff: -4e-3
     barrierJointPos:
-      coeff: 1e-1
+      coeff: 1e-3
     barrierBaseMotion:
-      coeff: 1e-1
+      coeff: 1e-3
     barrierJointVel:
-      coeff: 1e-1
+      coeff: 1e-3
     barrierTargetVel:
-      coeff: 1e-1
+      coeff: 1e-3
     barrierFootContact:
-      coeff: 1e-1
+      coeff: 1e-3
     barrierFootClearance:
-      coeff: 1e-1
+      coeff: 1e-3
 architecture:
   policy_net: [ 128, 128 ]
   value_net: [ 128, 128 ]

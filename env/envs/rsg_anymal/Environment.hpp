@@ -123,7 +123,7 @@ namespace raisim {
             limitBaseMotion_ << -0.3,0.3;
             limitJointVel_ << -8,8;
             limitTargetVel_ << -0.4,0.4;
-            limitFootContact_ << -0.6,2;
+            limitFootContact_ << -0.3,3.0;
             limitFootClearance_ << -0.08,1.0;
 
             /// visualize if it is the first environment
@@ -483,7 +483,8 @@ namespace raisim {
             }
             // Log Barrier - limit_foot_clearance
             for (int i = 0; i < 4; i++) {
-                relaxedLogBarrier(0.01, limitFootClearance_(0), limitFootClearance_(1), footClearance_(i), tempReward);
+                relaxedLogBarrier(0.004
+                                  , limitFootClearance_(0), limitFootClearance_(1), footClearance_(i), tempReward);
                 barrierFootClearance += tempReward;
             }
 
@@ -505,7 +506,7 @@ namespace raisim {
             barrierTargetVel = fmax(barrierTargetVel,logClip);
             barrierFootContact = fmax(barrierFootContact,logClip);
             barrierFootClearance = fmax(barrierFootClearance,logClip);
-//            rewards_.record("barrierJointPos", barrierJointPos);
+            rewards_.record("barrierJointPos", barrierJointPos);
 //      rewards_.record("barrierBodyHeight", barrierBodyHeight);
             rewards_.record("barrierBaseMotion", barrierBaseMotion);
             rewards_.record("barrierJointVel", barrierJointVel);

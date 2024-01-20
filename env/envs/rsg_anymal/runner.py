@@ -28,7 +28,7 @@ mode = args.mode
 weight_path = args.weight
 
 mode = 'retrain'
-weight_path = "/home/joon/rasim_ws/raisimLib/raisimGymTorch/data/anymal_locomotion/2024-01-19-18-03-22/full_4000.pt"
+weight_path = "/home/joon/rasim_ws/raisimLib/raisimGymTorch/data/anymal_locomotion/2024-01-20-21-56-31/full_4500.pt"
 
 # check if gpu is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

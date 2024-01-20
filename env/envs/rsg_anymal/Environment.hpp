@@ -65,18 +65,21 @@ namespace raisim {
             rewards_.initializeFromConfigurationFile (cfg["reward"]);
 
             /// indices of links that should not make contact with ground
-            footIndices_.push_back(anymal_->getBodyIdx("RH_SHANK"));
-            footIndices_.push_back(anymal_->getBodyIdx("LH_SHANK"));
-            footIndices_.push_back(anymal_->getBodyIdx("RF_SHANK"));
             footIndices_.push_back(anymal_->getBodyIdx("LF_SHANK"));
-            footFrames_.push_back("RH_ADAPTER_TO_FOOT");
-            footFrames_.push_back("LH_ADAPTER_TO_FOOT");
-            footFrames_.push_back("RF_ADAPTER_TO_FOOT");
+            footIndices_.push_back(anymal_->getBodyIdx("RF_SHANK"));
+            footIndices_.push_back(anymal_->getBodyIdx("LH_SHANK"));
+            footIndices_.push_back(anymal_->getBodyIdx("RH_SHANK"));
+
             footFrames_.push_back("LF_ADAPTER_TO_FOOT");
-            rollJointFrames_.push_back("RH_HAA");
-            rollJointFrames_.push_back("LH_HAA");
-            rollJointFrames_.push_back("RF_HAA");
+            footFrames_.push_back("RF_ADAPTER_TO_FOOT");
+            footFrames_.push_back("LH_ADAPTER_TO_FOOT");
+            footFrames_.push_back("RH_ADAPTER_TO_FOOT");
+
             rollJointFrames_.push_back("LF_HAA");
+            rollJointFrames_.push_back("RF_HAA");
+            rollJointFrames_.push_back("LH_HAA");
+            rollJointFrames_.push_back("RH_HAA");
+
 
             phase_ = 0.0;
             gait_hz_ = 0.72;
@@ -85,9 +88,11 @@ namespace raisim {
             command_.setZero();
             footContact_.setZero();
             jointPosWeight_.setZero(12);
+            smoothness2weight_.setZero();
             footPosWeight_.setZero();
             footContactPhase_.setZero();
             footClearance_.setZero();
+            smoothness2_.setZero();
             phaseSin_.setZero();
             footSlip_.setZero();
             footContactDouble_.setZero();
@@ -120,6 +125,7 @@ namespace raisim {
 
 //            limitBodyHeight_ << 0.48, 0.68;
 //            limitBodyHeight_ << 0.23, 0.71;
+            limitsmoothness2_<< -1.5,1.5;
             limitBaseMotion_ << -0.3,0.3;
             limitJointVel_ << -8,8;
             limitTargetVel_ << -0.4,0.4;
@@ -236,10 +242,10 @@ namespace raisim {
             updateFootToTerrain();
             /// for gait enforcing & foot clearance
             phase_ += simulation_dt_;
-            footContactPhase_(0) = sin(phase_/gait_hz_ * 2*3.141592); // RR
-            footContactPhase_(1) = -footContactPhase_(0); // RL
-            footContactPhase_(2) = -footContactPhase_(0); // FR
-            footContactPhase_(3) = footContactPhase_(0); // FL
+            footContactPhase_(0) = sin(phase_/gait_hz_ * 2*3.141592); // LF
+            footContactPhase_(1) = -footContactPhase_(0); // RF
+            footContactPhase_(2) = -footContactPhase_(0); // LH
+            footContactPhase_(3) = footContactPhase_(0); // RH
 
             phaseSin_(0) = sin(phase_/gait_hz_ * 2*3.141592); // for observation
             phaseSin_(1) = cos(phase_/gait_hz_ * 2*3.141592); // for observation
@@ -252,12 +258,18 @@ namespace raisim {
                 }
                 /// footClearance_ -> limit_foot_clearance 에 있도록 (-0.12,0.12) -> foot 드는 거 enforcing
                 double desiredFootZPosition = 0.15;
+                smoothness2_ = pTarget_ - 2 * prevTarget_ + prevPrevTarget_;
+
                 for (int i = 0; i < 4; i++) {
                     if (footContactPhase_(i) < -0.6) { /// during swing, 전체시간의 33 %
                         footClearance_(i) = footToTerrain_.segment(i * 5, 5).minCoeff() -desiredFootZPosition;
+                        smoothness2weight_ << 0.0, 0.0,1.0; // knee joint만 logbar의 영향을 받도록
+                        smoothness2_.segment(3*i,3).cwiseProduct(smoothness2weight_);
                         // 대략, 0.17 sec, 0 보다 크거나 같으면 됨 (enforcing clearance)
-                    } else { footClearance_(i) = 0.0; } // max reward (not enforcing clearance)
+                    } else { footClearance_(i) = 0.0;
+                        smoothness2_.segment(3*i,3).setZero();} // max reward (not enforcing clearance)
                 }
+
             }
 //            } else { /// under standingMode_
 //                /// standingMode_ 는 zero command 로 부터 유추 가능, command 는 obs 이기 때문에, robot 은 standingMode_인지 아닌지 충분히 알 수 있음
@@ -359,7 +371,7 @@ namespace raisim {
             }
             rewards_.record("footSlip", footSlip_.sum());
 //            rewards_.record("bodyOri", std::acos(rot(8)) * std::acos(rot(8)) * bodyOriWeight);
-            jointPosWeight_ << 1.0, 0.6,0.6,1.,0.6,0.6,1.,0.6,0.6,1.,0.6,0.6;
+            jointPosWeight_ << 1.0, 0.6,0.8,1.,0.6,0.8,1.,0.6,0.8,1.,0.6,0.8;
             rewards_.record("smoothness2", ((pTarget_ - 2 * prevTarget_ + prevPrevTarget_).cwiseProduct(jointPosWeight_)).squaredNorm());
             rewards_.record("torque", anymal_->getGeneralizedForce().squaredNorm());
 
@@ -433,7 +445,7 @@ namespace raisim {
 
         float getLogBarReward(){
             /// compute barrier reward
-            double barrierJointPos = 0.0, barrierBodyHeight = 0.0, barrierBaseMotion = 0.0, barrierJointVel = 0.0, barrierTargetVel = 0.0, barrierFootContact = 0.0, barrierFootClearance = 0.0;
+            double barrierJointPos = 0.0,barriersmoothness2 = 0.0, barrierBodyHeight = 0.0, barrierBaseMotion = 0.0, barrierJointVel = 0.0, barrierTargetVel = 0.0, barrierFootContact = 0.0, barrierFootClearance = 0.0;
             double tempReward = 0.0;
 
             /// Log Barrier - limit_joint_pos
@@ -447,6 +459,16 @@ namespace raisim {
                     //        std::cout << index_leg<<" th joint : " << tempReward << std::endl;
                 }
             }
+            /// Log Barrier - limit_smoothness2
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 3; j++) {
+                    int index_joint = i * 3 + j;
+                    relaxedLogBarrier(0.5, limitsmoothness2_(0), limitsmoothness2_( 1),smoothness2_(index_joint), tempReward);
+                    barriersmoothness2 += tempReward;
+                    //        std::cout << index_leg<<" th joint : " << tempReward << std::endl;
+                }
+            }
+
             // Log Barrier - limit_body_height
 //      for (int i = 0; i < 2; i++) {
 //          relaxedLogBarrier(0.04, limitBodyHeight_(0), limitBodyHeight_(1), bodyFrameHeight_(i), tempReward);
@@ -501,12 +523,14 @@ namespace raisim {
 
             double logClip = -500.0;
             barrierJointPos = fmax(barrierJointPos, logClip);           /// 여기 밖 부분은 gradient 안 받겠다
+            barriersmoothness2 = fmax(barriersmoothness2, logClip);
             barrierBaseMotion = fmax(barrierBaseMotion,logClip);
             barrierJointVel = fmax(barrierJointVel,logClip);
             barrierTargetVel = fmax(barrierTargetVel,logClip);
             barrierFootContact = fmax(barrierFootContact,logClip);
             barrierFootClearance = fmax(barrierFootClearance,logClip);
             rewards_.record("barrierJointPos", barrierJointPos);
+            rewards_.record("barriersmoothness2", barriersmoothness2);
 //      rewards_.record("barrierBodyHeight", barrierBodyHeight);
             rewards_.record("barrierBaseMotion", barrierBaseMotion);
             rewards_.record("barrierJointVel", barrierJointVel);
@@ -583,12 +607,12 @@ namespace raisim {
         double terminalRewardCoeff_ = -10.0;
         double phase_;
         double gait_hz_;
-        Eigen::Vector<double,12> pTarget_, prevTarget_, prevPrevTarget_, preJointVel_;
+        Eigen::Vector<double,12> pTarget_, prevTarget_, prevPrevTarget_, preJointVel_,smoothness2_;
         Eigen::VectorXd actionMean_, actionStd_, obDouble_;
         Eigen::Vector3d bodyLinearVel_, bodyAngularVel_,command_; //// TEEpos_, posError_,baseError_,basepos_,exforce3d,exforceX,exforceY,exforceZ,
         Eigen::Vector4d footContact_;
         Eigen::VectorXd jointPosWeight_;
-        Eigen::Vector3d footPosWeight_;
+        Eigen::Vector3d footPosWeight_,smoothness2weight_;
         Eigen::Vector<double,18> jointPgain, jointDgain;
         std::vector<Eigen::Vector<double,12>> jointPosErrorHist_, jointVelHist_;
         std::vector<Eigen::Vector<double,18>> genForceTargetHist_;
@@ -603,6 +627,7 @@ namespace raisim {
 //        Eigen::Matrix<double,1,2> limitBodyHeight_;
         Eigen::Matrix<double,1,2> limitBaseMotion_; // z vel, roll,pitch vel
         Eigen::Matrix<double,1,2> limitJointVel_;
+        Eigen::Matrix<double,1,2> limitsmoothness2_;
         Eigen::Matrix<double,1,2> limitTargetVel_;
         Eigen::Matrix<double,1,2> limitFootClearance_;
         Eigen::Matrix<double,1,2> limitFootContact_; // for gait enforcing

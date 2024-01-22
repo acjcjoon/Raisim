@@ -51,7 +51,7 @@ namespace raisim {
             anymal_->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
             /// MUST BE DONE FOR ALL ENVIRONMENTS
-            obDim_ = 154;
+            obDim_ = 155;
             actionDim_ = nJoints_; actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
             obDouble_.setZero(obDim_);
 
@@ -80,9 +80,12 @@ namespace raisim {
 
             phase_ = 0.0;
             gait_hz_ = 0.72;
+            standingMode_ = false;
+            standingSmoothness_ =0.0;
 
             rot.setZero();
-            command_.setZero();
+            TEEpos_.setZero();
+            poserror_.setZero();
             footContact_.setZero();
             jointPosWeight_.setZero(12);
             footPosWeight_.setZero();
@@ -122,7 +125,8 @@ namespace raisim {
 //            limitBodyHeight_ << 0.23, 0.71;
             limitBaseMotion_ << -0.3,0.3;
             limitJointVel_ << -8,8;
-            limitTargetVel_ << -0.4,0.4;
+            limitlinearVel_ << -0.4,0.4;
+            limitOri_ << -1.0,0.1;
             limitFootContact_ << -0.3,3.0;
             limitFootClearance_ << -0.08,1.0;
 
@@ -131,10 +135,7 @@ namespace raisim {
                 server_ = std::make_unique<raisim::RaisimServer>(world_.get());
                 server_->launchServer();
                 server_->focusOn(anymal_);
-                arrows_xy = server_->addVisualArrow("command_xy",0.1,0.3,0,1,0,1);
-                arrows_yaw = server_->addVisualArrow("command_yaw",0.1,0.3,1,0,0,1);
-//                visual_target = server_->addVisualSphere("visual_target",0.05,1,0,0,0.4);
-//                external_force = server_->addVisualArrow("visual_force",0.25,0.5,1,0,0);
+                visual_target = server_->addVisualSphere("visual_target",0.05,1,0,0,0.4);
             }
 
             /// initial body to foot pos
@@ -155,16 +156,11 @@ namespace raisim {
         void reset() final {
             anymal_->setState(gc_init_, gv_init_);
             updateObservation();
-
-            do {
-//            double maxCommand = (iter_ % 4 == 0) ? (1.0 + comCurriculum * 1.0) : (1.0 + comCurriculum * 0.5); // 평지 lin x max 2.0, other 1.5
-                double maxCommand = 1.8;
-                command_ << maxCommand * uniDist_(gen_), 0.6 * uniDist_(gen_), 0.6 * uniDist_(gen_);     // [lix x max, 0.6, 0.6]
-                command_(0) = (command_(0) < -1.0) ? command_(0)+1.2 : command_(0);           // 뒤로가는 건 max -1.0
-//            command_ << maxCommand/2 * (uniDist_(gen_)+1), 0, 0;     // [lix x max, 0.6, 0.6]
-            } while (command_.norm() < 0.2);
-
-//            std::cout << command_.transpose() << std::endl;
+            if (visualizable_) {
+                Eigen::Vector3d des_pos(0.2*uniDist_(gen_)+2.5,0.2*uniDist_(gen_)-1.5,0.5);
+                visual_target->setPosition(des_pos);
+                TEEpos_ = visual_target->getPosition();
+            }
 
             for (auto& vec : genForceTargetHist_) { vec.setZero(); }
             phase_ = 0.0;
@@ -198,9 +194,9 @@ namespace raisim {
                 world_->integrate();
                 if(server_) server_->unlockVisualizationServerMutex();
                 updateObservation();
+//                standingReward();
                 avgReward += getNegPosReward();
                 barrierReward_+= getLogBarReward();
-                visualizeCommand();
             }
 
             avgReward /= (control_dt_ / simulation_dt_ + 1e-10);
@@ -217,6 +213,15 @@ namespace raisim {
             raisim::quatToRotMat(quat, rot);
             bodyLinearVel_ = rot.e().transpose() * gv_.segment(0, 3);
             bodyAngularVel_ = rot.e().transpose() * gv_.segment(3, 3);
+
+            poserror_ = rot.e().transpose()*(TEEpos_.e() -gc_.head(3));
+//                      std::cout << poserror_.normalized().transpose() << std::endl;
+//            if(poserror_.norm() < 0.1){
+//                standingMode_ = true;
+//            } else{
+//                standingMode_ = false;
+//            }
+
             for(int i = 0; i < 4; i++) {
                 anymal_->getFramePosition(footFrames_[i], footPos_[i]);
                 anymal_->getFrameVelocity(footFrames_[i], footVel_[i]);
@@ -259,7 +264,7 @@ namespace raisim {
                     } else { footClearance_(i) = 0.0; } // max reward (not enforcing clearance)
                 }
             }
-//            } else { /// under standingMode_
+//            else { /// under standingMode_
 //                /// standingMode_ 는 zero command 로 부터 유추 가능, command 는 obs 이기 때문에, robot 은 standingMode_인지 아닌지 충분히 알 수 있음
 //                for (int i=0; i<4; i++){
 //                    footContactDouble_(i) = 1.0; // around max reward, where this value should go under (-0.3,3)
@@ -277,10 +282,11 @@ namespace raisim {
                     jointVelHist_[0], jointVelHist_[6], jointVelHist_[12],                /// joint History 36 (0.18, 0.12, 0.6)
                     rot.e().transpose() * (footPos_[0].e() - gc_.head(3)), rot.e().transpose() * (footPos_[1].e() - gc_.head(3)),
                     rot.e().transpose() * (footPos_[2].e() - gc_.head(3)), rot.e().transpose() * (footPos_[3].e() - gc_.head(3)), /// relative foot position with respect to the body COM, expressed in the body frame 12
-                    command_, /// command 3
+                    poserror_, /// poserror 3
                     phaseSin_(0),phaseSin_(1), //// phase encoding 2
                     footClearance_,  //// footClearance_ 4
-                    footContact_.cast<double>(); ////footContact_ 4
+                    footContact_.cast<double>();////footContact_ 4
+//                    static_cast<double>(standingMode_); ////standingmode 1
         }
 
         void computeTorque(){
@@ -311,44 +317,13 @@ namespace raisim {
             jointPosErrorHist_.push_back(pTarget_ - gc_.tail(12));
         }
 
-        void visualizeCommand(){
-
-            Eigen::Matrix<double,3,3> rot_robot, rot_pitch_90, rot_command;
-            Eigen::Quaterniond quaternion;
-            Eigen::Vector3d command;
-            Eigen::VectorXd gc_head_7(7);
-            double theta_command;
-            Eigen::Matrix<double,3,1> arrow_pos_offset;
-
-            command = command_;
-            gc_head_7 = gc_.head(7);
-
-            quaternion.coeffs() << gc_head_7.tail(3),gc_head_7(3);
-            rot_robot = quaternion;
-
-            rot_pitch_90 << 0,0,1,0,1,0,-1,0,0;
-            theta_command = -atan2(command(1),command(0));
-            rot_command << 1,0,0,0,cos(theta_command),-sin(theta_command),0,sin(theta_command),cos(theta_command);
-
-            arrow_pos_offset << 0,0,0.4;
-            arrow_pos_offset = rot_robot * arrow_pos_offset.eval();
-            quaternion = rot_robot.eval() * rot_pitch_90 * rot_command;
-
-            if (visualizable_) {
-                arrows_xy->setCylinderSize(0.3, command.head(2).norm() * 0.4);
-                arrows_xy->setPosition(gc_head_7.head(3) + arrow_pos_offset);
-                arrows_xy->setOrientation(quaternion.w(), quaternion.x(), quaternion.y(), quaternion.z());
-
-                arrows_yaw->setCylinderSize(0.3, command(2) * 0.4);
-                arrows_yaw->setPosition(gc_head_7.head(3) + arrow_pos_offset);
-                arrows_yaw->setOrientation(gc_head_7.segment(3, 4));
-            }
-        }
 
         float getNegPosReward(){
             /// pos reward
-            rewards_.record("comAngularVel", std::exp(-5.0 * pow(command_(2) - bodyAngularVel_(2),2)));
-            rewards_.record("comLinearVel", std::exp(-5.0 * (command_.head(2) - bodyLinearVel_.head(2)).squaredNorm()));
+            rewards_.record("comPoserror", 5.0- 2* sqrt(poserror_.head(2).norm()));
+//            rewards_.record("comvel", std::exp(-1.0 * (poserror_.head(2).normalized()*0.7- bodyLinearVel_.head(2)).squaredNorm()));
+//                        std::cout << (poserror_.head(2).normalized()- bodyLinearVel_.head(2)).squaredNorm()<< std::endl;
+            rewards_.record("comOri", std::exp(-5.0 * pow(1.0-(poserror_.head(2).normalized()(0)),2)));
 
             /// neg reward
             footSlip_.setZero();
@@ -433,7 +408,7 @@ namespace raisim {
 
         float getLogBarReward(){
             /// compute barrier reward
-            double barrierJointPos = 0.0, barrierBodyHeight = 0.0, barrierBaseMotion = 0.0, barrierJointVel = 0.0, barrierTargetVel = 0.0, barrierFootContact = 0.0, barrierFootClearance = 0.0;
+            double barrierJointPos = 0.0, barrierBodyHeight = 0.0, barrierBaseMotion = 0.0, barrierJointVel = 0.0, barrierlinearVel = 0.0, barrierlimitOri = 0.0, barrierFootContact = 0.0, barrierFootClearance = 0.0;
             double tempReward = 0.0;
 
             /// Log Barrier - limit_joint_pos
@@ -468,13 +443,18 @@ namespace raisim {
                 barrierJointVel += tempReward;
             }
 
-            // Log Barrier - limit_target_vel
-            relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyLinearVel_(0) - command_(0), tempReward);
-            barrierTargetVel += tempReward;
-            relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyLinearVel_(1) - command_(1), tempReward);
-            barrierTargetVel += tempReward;
-            relaxedLogBarrier(0.2, limitTargetVel_(0), limitTargetVel_(1), bodyAngularVel_(2) - command_(2), tempReward);
-            barrierTargetVel += tempReward;
+            // Log Barrier - limit_linear_vel
+            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(0)*0.7 - bodyLinearVel_(0) , tempReward);
+            barrierlinearVel += tempReward;
+            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(0)*0.7 - bodyLinearVel_(0) , tempReward);
+            barrierlinearVel += tempReward;
+            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(1)*0.7 - bodyLinearVel_(1) , tempReward);
+            barrierlinearVel += tempReward;
+
+            // Log Barrier - limit_tagetOri_motion
+            relaxedLogBarrier(0.02, limitOri_(0), limitOri_(1), (1.0-poserror_.head(2).normalized()(0)), tempReward);
+            barrierlimitOri += tempReward;
+
 
             // Log Barrier - limit_foot_contact
             for (int i = 0; i < 4; i++) {
@@ -503,20 +483,37 @@ namespace raisim {
             barrierJointPos = fmax(barrierJointPos, logClip);           /// 여기 밖 부분은 gradient 안 받겠다
             barrierBaseMotion = fmax(barrierBaseMotion,logClip);
             barrierJointVel = fmax(barrierJointVel,logClip);
-            barrierTargetVel = fmax(barrierTargetVel,logClip);
+            barrierlinearVel = fmax(barrierlinearVel,logClip);
+            barrierlimitOri = fmax(barrierlimitOri,logClip);
             barrierFootContact = fmax(barrierFootContact,logClip);
             barrierFootClearance = fmax(barrierFootClearance,logClip);
             rewards_.record("barrierJointPos", barrierJointPos);
 //      rewards_.record("barrierBodyHeight", barrierBodyHeight);
             rewards_.record("barrierBaseMotion", barrierBaseMotion);
             rewards_.record("barrierJointVel", barrierJointVel);
-            rewards_.record("barrierTargetVel", barrierTargetVel);
+            rewards_.record("barrierlimitOri", barrierlimitOri);
+            rewards_.record("barrierLimitVel", barrierlinearVel);
             rewards_.record("barrierFootContact", barrierFootContact);
             rewards_.record("barrierFootClearance", barrierFootClearance);
 
-            float logBarReward =  (float)(1e-1*(barrierJointPos + barrierBaseMotion + barrierJointVel + barrierTargetVel + barrierFootContact + barrierFootClearance));
+            float logBarReward =  (float)(1e-1*(barrierJointPos + barrierBaseMotion + barrierJointVel + barrierlimitOri+ barrierlinearVel + barrierFootContact + barrierFootClearance));
 //      rewards_.record("relaxedLog", logBarReward); /// relaxed log barrier
             return  logBarReward;
+        }
+
+        void standingReward(){
+            /// for standingMode
+            if (!standingMode_){
+                limitBaseMotion_ << -0.3,0.3;
+                standingSmoothness_ = 1.0;
+                jointPosWeight_ << 1.0, 0.6,0.6,1.,0.6,0.6,1.,0.6,0.6,1.,0.6,0.6;
+                footPosWeight_ << 0.6,1.0,0.4;
+            } else {
+                limitBaseMotion_ << -0.1,0.1;
+                standingSmoothness_ = 2.8;
+                jointPosWeight_ << 1.0, 0.8,0.8,1.,0.8,0.8,1.,0.8,0.8,1.,0.8,0.8;
+                footPosWeight_ << 1.0,1.0,1.0;
+            }
         }
 
         void updateFootToTerrain(){
@@ -570,6 +567,7 @@ namespace raisim {
         int gcDim_, gvDim_, nJoints_;
         bool visualizable_ = false;
         raisim::ArticulatedSystem* anymal_;
+        raisim::Visuals* visual_target;
         raisim::Visuals* arrows_xy;
         raisim::Visuals* arrows_yaw;
 //        raisim::Visuals* visual_EEpos;
@@ -578,14 +576,18 @@ namespace raisim {
 //        std::vector<raisim::Visuals*> arrows_;
 
         raisim::Mat<3,3> rot;
+        raisim::Vec<3> TEEpos_;
+        Eigen::Vector3d poserror_;
         Eigen::VectorXd gc_init_, gv_init_, gc_, gv_;
+        bool standingMode_;
         double barrierReward_;
         double terminalRewardCoeff_ = -10.0;
         double phase_;
+        double standingSmoothness_;
         double gait_hz_;
         Eigen::Vector<double,12> pTarget_, prevTarget_, prevPrevTarget_, preJointVel_;
         Eigen::VectorXd actionMean_, actionStd_, obDouble_;
-        Eigen::Vector3d bodyLinearVel_, bodyAngularVel_,command_; //// TEEpos_, posError_,baseError_,basepos_,exforce3d,exforceX,exforceY,exforceZ,
+        Eigen::Vector3d bodyLinearVel_, bodyAngularVel_; //// TEEpos_, posError_,baseError_,basepos_,exforce3d,exforceX,exforceY,exforceZ,command_
         Eigen::Vector4d footContact_;
         Eigen::VectorXd jointPosWeight_;
         Eigen::Vector3d footPosWeight_;
@@ -603,7 +605,8 @@ namespace raisim {
 //        Eigen::Matrix<double,1,2> limitBodyHeight_;
         Eigen::Matrix<double,1,2> limitBaseMotion_; // z vel, roll,pitch vel
         Eigen::Matrix<double,1,2> limitJointVel_;
-        Eigen::Matrix<double,1,2> limitTargetVel_;
+        Eigen::Matrix<double,1,2> limitlinearVel_;
+        Eigen::Matrix<double,1,2> limitOri_;
         Eigen::Matrix<double,1,2> limitFootClearance_;
         Eigen::Matrix<double,1,2> limitFootContact_; // for gait enforcing
 

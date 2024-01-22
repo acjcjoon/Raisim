@@ -12,20 +12,22 @@ environment:
   max_time: 4.0
   action_std: 0.3
   reward:
-    comAngularVel:
-      coeff: 5.0
-    comLinearVel:
+    comPoserror:
+      coeff: 1.0
+#    comvel:
+#      coeff: 4.0
+    comOri:
       coeff: 5.0
     footSlip:
-      coeff: -4e-3
+      coeff: -4e-2
     smoothness2:
       coeff: -8e-1
     torque:
       coeff: -4e-6
     jointPos:
-      coeff: -4e-3
+      coeff: -8e-2
     footPos:
-      coeff: -4e-3
+      coeff: -8e-2
     barrierJointPos:
       coeff: 1e-3
 #    barriersmoothness2:
@@ -34,7 +36,9 @@ environment:
       coeff: 1e-3
     barrierJointVel:
       coeff: 1e-3
-    barrierTargetVel:
+    barrierLimitVel:
+      coeff: 1e-3
+    barrierlimitOri:
       coeff: 1e-3
     barrierFootContact:
       coeff: 2e-2

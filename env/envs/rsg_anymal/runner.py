@@ -27,8 +27,8 @@ args = parser.parse_args()
 mode = args.mode
 weight_path = args.weight
 
-mode = 'retrain'
-weight_path = "/home/joon/rasim_ws/raisimLib/raisimGymTorch/data/anymal_locomotion/2024-01-20-21-56-31/full_4500.pt"
+# mode = 'retrain'
+# weight_path = "/home/joon/rasim_ws/raisimLib/raisimGymTorch/data/anymal_locomotion/2024-01-22-19-21-22/full_2700.pt"
 
 # check if gpu is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -58,7 +58,7 @@ avg_rewards = []
 actor = ppo_module.Actor(ppo_module.MLP(cfg['architecture']['policy_net'], nn.LeakyReLU, ob_dim, act_dim),
                          ppo_module.MultivariateGaussianDiagonalCovariance(act_dim,
                                                                            env.num_envs,
-                                                                           0.0,
+                                                                           1.0,
                                                                            NormalSampler(act_dim),
                                                                            cfg['seed']),
                          device)

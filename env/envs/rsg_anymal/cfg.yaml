@@ -5,7 +5,7 @@ environment:
   render: True
   # just testing commenting
   num_envs: 100
-  eval_every_n: 50
+  eval_every_n: 100
   num_threads: 60
   simulation_dt: 0.001
   control_dt: 0.01
@@ -19,7 +19,7 @@ environment:
     footSlip:
       coeff: -4e-3
     smoothness2:
-      coeff: -4e-1
+      coeff: -8e-1
     torque:
       coeff: -4e-6
     jointPos:
@@ -28,8 +28,8 @@ environment:
       coeff: -4e-3
     barrierJointPos:
       coeff: 1e-3
-    barriersmoothness2:
-      coeff: 1e-3
+#    barriersmoothness2:
+#      coeff: 1e-3
     barrierBaseMotion:
       coeff: 1e-3
     barrierJointVel:

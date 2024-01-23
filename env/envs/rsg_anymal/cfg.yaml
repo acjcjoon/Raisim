@@ -17,19 +17,19 @@ environment:
     comLinearVel:
       coeff: 5.0
     footSlip:
-      coeff: -4e-3
+      coeff: -8e-2
     smoothness2:
       coeff: -8e-1
     torque:
       coeff: -4e-6
     jointPos:
-      coeff: -4e-3
+      coeff: -9e-1
     footPos:
-      coeff: -4e-3
+      coeff: -1
     barrierJointPos:
-      coeff: 1e-3
-#    barriersmoothness2:
-#      coeff: 1e-3
+      coeff: 5e-3
+    #    barriersmoothness2:
+    #      coeff: 1e-3
     barrierBaseMotion:
       coeff: 1e-3
     barrierJointVel:

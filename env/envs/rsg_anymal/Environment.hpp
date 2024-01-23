@@ -365,8 +365,9 @@ namespace raisim {
 
             /// joint pos regulation -> not used
             Eigen::VectorXd jointPosTemp(12); jointPosTemp.setZero();
-//      jointPosTemp = gc_.tail(12) - gcInit_.tail(12);
-//      jointPosTemp = jointPosWeight_.cwiseProduct(jointPosTemp.eval());
+            jointPosTemp = gc_.tail(12) - gc_init_.tail(12);
+            jointPosWeight_ << 1.0, 0.4,0.4,1.,0.4,0.4,1.,0.4,0.4,1.,0.4,0.4;
+            jointPosTemp = jointPosWeight_.cwiseProduct(jointPosTemp.eval());
             rewards_.record("jointPos", jointPosTemp.squaredNorm());
 
             /// task space foot pos regulation -> used
@@ -621,4 +622,3 @@ namespace raisim {
     thread_local std::mt19937  raisim::ENVIRONMENT::gen_;
     thread_local std::normal_distribution<double> raisim::ENVIRONMENT::normDist_(0., 1.);
     thread_local std::uniform_real_distribution<double> raisim::ENVIRONMENT::uniDist_(-1., 1.);
-}

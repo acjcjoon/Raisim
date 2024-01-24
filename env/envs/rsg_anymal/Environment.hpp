@@ -51,7 +51,7 @@ namespace raisim {
             anymal_->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
             /// MUST BE DONE FOR ALL ENVIRONMENTS
-            obDim_ = 155;
+            obDim_ = 161;
             actionDim_ = nJoints_; actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
             obDouble_.setZero(obDim_);
 
@@ -79,6 +79,11 @@ namespace raisim {
             rollJointFrames_.push_back("LF_HAA");
 
             phase_ = 0.0;
+
+            Tmax_ = 6.0;
+            Trest_ = 2.0;
+            Tremain_ = Tmax_ -Trest_;
+
             gait_hz_ = 0.72;
             standingMode_ = false;
             standingSmoothness_ =0.0;
@@ -86,6 +91,8 @@ namespace raisim {
             rot.setZero();
             TEEpos_.setZero();
             poserror_.setZero();
+            preposeror_.setZero();
+            prepreposerror_.setZero();
             footContact_.setZero();
             jointPosWeight_.setZero(12);
             footPosWeight_.setZero();
@@ -125,7 +132,7 @@ namespace raisim {
 //            limitBodyHeight_ << 0.23, 0.71;
             limitBaseMotion_ << -0.3,0.3;
             limitJointVel_ << -8,8;
-            limitlinearVel_ << -0.4,0.4;
+            limitlinearVel_ << -0.1,0.1;
             limitOri_ << -1.0,0.1;
             limitFootContact_ << -0.3,3.0;
             limitFootClearance_ << -0.08,1.0;
@@ -155,12 +162,16 @@ namespace raisim {
 
         void reset() final {
             anymal_->setState(gc_init_, gv_init_);
-            updateObservation();
             if (visualizable_) {
                 Eigen::Vector3d des_pos(0.2*uniDist_(gen_)+2.5,0.2*uniDist_(gen_)-1.5,0.5);
                 visual_target->setPosition(des_pos);
                 TEEpos_ = visual_target->getPosition();
             }
+            poserror_ = TEEpos_.e() - gc_init_.head(3);
+            preposeror_ = poserror_;
+            prepreposerror_ = preposeror_;
+            updateObservation();
+
 
             for (auto& vec : genForceTargetHist_) { vec.setZero(); }
             phase_ = 0.0;
@@ -173,6 +184,7 @@ namespace raisim {
 
             footContactPhase_.setZero();
             footClearance_.setZero();
+            Tremain_ = Tmax_ -Trest_;
         }
 
 
@@ -214,13 +226,7 @@ namespace raisim {
             bodyLinearVel_ = rot.e().transpose() * gv_.segment(0, 3);
             bodyAngularVel_ = rot.e().transpose() * gv_.segment(3, 3);
 
-            poserror_ = rot.e().transpose()*(TEEpos_.e() -gc_.head(3));
-//                      std::cout << poserror_.normalized().transpose() << std::endl;
-//            if(poserror_.norm() < 0.1){
-//                standingMode_ = true;
-//            } else{
-//                standingMode_ = false;
-//            }
+            poserror_ = (TEEpos_.e() -gc_.head(3));
 
             for(int i = 0; i < 4; i++) {
                 anymal_->getFramePosition(footFrames_[i], footPos_[i]);
@@ -272,6 +278,10 @@ namespace raisim {
 //                }
 //            }
 
+            Tremain_ = (Tmax_ -Trest_) - phase_;
+            Tremain_ = fmax(Tremain_,0);
+
+
             obDouble_ << rot.e().row(2).transpose(), /// body orientation : 3
                     gc_.tail(12), /// joint angles : 12
                     gv_.tail(12), /// joint velocity 12
@@ -282,10 +292,13 @@ namespace raisim {
                     jointVelHist_[0], jointVelHist_[6], jointVelHist_[12],                /// joint History 36 (0.18, 0.12, 0.6)
                     rot.e().transpose() * (footPos_[0].e() - gc_.head(3)), rot.e().transpose() * (footPos_[1].e() - gc_.head(3)),
                     rot.e().transpose() * (footPos_[2].e() - gc_.head(3)), rot.e().transpose() * (footPos_[3].e() - gc_.head(3)), /// relative foot position with respect to the body COM, expressed in the body frame 12
-                    poserror_, /// poserror 3
-                    phaseSin_(0),phaseSin_(1), //// phase encoding 2
-                    footClearance_,  //// footClearance_ 4
-                    footContact_.cast<double>();////footContact_ 4
+                    Tremain_,
+                    rot.e().transpose() * poserror_,                                      /// poserror 3
+                    rot.e().transpose() * preposeror_,                                    /// preposerror 3
+                    rot.e().transpose() * prepreposerror_,                                /// prepreposerror 3
+                    phaseSin_(0),phaseSin_(1),                                            /// phase encoding 2
+                    footClearance_,                                                       /// footClearance_ 4
+                    footContact_.cast<double>();                                          ///footContact_ 4
 //                    static_cast<double>(standingMode_); ////standingmode 1
         }
 
@@ -310,6 +323,9 @@ namespace raisim {
             prevPrevTarget_ = prevTarget_;
             prevTarget_ = pTarget_;
 
+            prepreposerror_ = preposeror_;
+            preposeror_ = poserror_;
+
             jointVelHist_.erase(jointVelHist_.begin());
             jointVelHist_.push_back(gv_.tail(12));
 
@@ -320,10 +336,25 @@ namespace raisim {
 
         float getNegPosReward(){
             /// pos reward
-            rewards_.record("comPoserror", 5.0- 2* sqrt(poserror_.head(2).norm()));
-//            rewards_.record("comvel", std::exp(-1.0 * (poserror_.head(2).normalized()*0.7- bodyLinearVel_.head(2)).squaredNorm()));
-//                        std::cout << (poserror_.head(2).normalized()- bodyLinearVel_.head(2)).squaredNorm()<< std::endl;
-            rewards_.record("comOri", std::exp(-5.0 * pow(1.0-(poserror_.head(2).normalized()(0)),2)));
+
+            if(phase_ > Tmax_ -Trest_){
+                rewards_.record("comPoserror", (1.0/(1.0+poserror_.norm()))/Trest_);
+            } else{
+                rewards_.record("comPoserror", 0);
+            }
+
+            if(phase_ > 1.0) {
+                rewards_.record("comOri1", (rot.e().transpose() * poserror_).head(2).normalized()(0));
+                rewards_.record("comOri2", gv_.head(2).normalized().transpose() * poserror_.head(2).normalized());
+            }else{
+                rewards_.record("comOri1", 0);
+                rewards_.record("comOri2", 0);
+            }
+//            double vel = 0.9*(1/(1+std::exp(-20*(sqrt(poserror_.head(2).norm())-0.2))));
+////            rewards_.record("comPoserror", 5.0- 2* sqrt(poserror_.head(2).norm()));
+//            rewards_.record("comvel", std::exp(-5.0 * pow(vel-bodyLinearVel_(0),2)));
+////                        std::cout << (poserror_.head(2).normalized()- bodyLinearVel_.head(2)).squaredNorm()<< std::endl;
+
 
             /// neg reward
             footSlip_.setZero();
@@ -333,15 +364,16 @@ namespace raisim {
                 }
             }
             rewards_.record("footSlip", footSlip_.sum());
-//            rewards_.record("bodyOri", std::acos(rot(8)) * std::acos(rot(8)) * bodyOriWeight);
+            
             jointPosWeight_ << 1.0, 0.6,0.6,1.,0.6,0.6,1.,0.6,0.6,1.,0.6,0.6;
             rewards_.record("smoothness2", ((pTarget_ - 2 * prevTarget_ + prevPrevTarget_).cwiseProduct(jointPosWeight_)).squaredNorm());
             rewards_.record("torque", anymal_->getGeneralizedForce().squaredNorm());
 
             /// joint pos regulation -> not used
             Eigen::VectorXd jointPosTemp(12); jointPosTemp.setZero();
-//      jointPosTemp = gc_.tail(12) - gcInit_.tail(12);
-//      jointPosTemp = jointPosWeight_.cwiseProduct(jointPosTemp.eval());
+            jointPosWeight_ << 1.0, 0.4,0.4,1.,0.4,0.4,1.,0.4,0.4,1.,0.4,0.4;
+            jointPosTemp = gc_.tail(12) - gc_init_.tail(12);
+            jointPosTemp = jointPosWeight_.cwiseProduct(jointPosTemp.eval());
             rewards_.record("jointPos", jointPosTemp.squaredNorm());
 
             /// task space foot pos regulation -> used
@@ -443,17 +475,24 @@ namespace raisim {
                 barrierJointVel += tempReward;
             }
 
-            // Log Barrier - limit_linear_vel
-            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(0)*0.7 - bodyLinearVel_(0) , tempReward);
-            barrierlinearVel += tempReward;
-            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(0)*0.7 - bodyLinearVel_(0) , tempReward);
-            barrierlinearVel += tempReward;
-            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(1)*0.7 - bodyLinearVel_(1) , tempReward);
-            barrierlinearVel += tempReward;
+//            double vel = 0.9*(1/(1+std::exp(-20*(sqrt(poserror_.head(2).norm())-0.2))));
+//            relaxedLogBarrier(0.05, limitlinearVel_(0)+vel, limitlinearVel_(1)+vel,bodyLinearVel_(0), tempReward);
+//            barrierlinearVel += tempReward;
 
-            // Log Barrier - limit_tagetOri_motion
-            relaxedLogBarrier(0.02, limitOri_(0), limitOri_(1), (1.0-poserror_.head(2).normalized()(0)), tempReward);
-            barrierlimitOri += tempReward;
+//            double vel = 0.7*(1/(1+std::exp(-20*(sqrt(poserror_.head(2).norm())-0.2))));
+//            relaxedLogBarrier(0.2, limitlinearVel_(0)+vel, limitlinearVel_(1)+vel, (sqrt(prevposerror_.head(2).norm())-sqrt(poserror_.head(2).norm()))/0.001, tempReward);
+//            barrierlinearVel += tempReward;
+//            // Log Barrier - limit_linear_vel
+//            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(0)*0.7 - bodyLinearVel_(0) , tempReward);
+//            barrierlinearVel += tempReward;
+//            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(0)*0.7 - bodyLinearVel_(0) , tempReward);
+//            barrierlinearVel += tempReward;
+//            relaxedLogBarrier(0.2, limitlinearVel_(0), limitlinearVel_(1), poserror_.head(2).normalized()(1)*0.7 - bodyLinearVel_(1) , tempReward);
+//            barrierlinearVel += tempReward;
+
+//            // Log Barrier - limit_tagetOri_motion
+//            relaxedLogBarrier(0.02, limitOri_(0), limitOri_(1), (1.0-(rot.e().transpose()*poserror_).head(2).normalized()(0)), tempReward);
+//            barrierlimitOri += tempReward;
 
 
             // Log Barrier - limit_foot_contact
@@ -491,8 +530,8 @@ namespace raisim {
 //      rewards_.record("barrierBodyHeight", barrierBodyHeight);
             rewards_.record("barrierBaseMotion", barrierBaseMotion);
             rewards_.record("barrierJointVel", barrierJointVel);
-            rewards_.record("barrierlimitOri", barrierlimitOri);
-            rewards_.record("barrierLimitVel", barrierlinearVel);
+//            rewards_.record("barrierlimitOri", barrierlimitOri);
+//            rewards_.record("barrierLimitVel", barrierlinearVel);
             rewards_.record("barrierFootContact", barrierFootContact);
             rewards_.record("barrierFootClearance", barrierFootClearance);
 
@@ -578,11 +617,16 @@ namespace raisim {
         raisim::Mat<3,3> rot;
         raisim::Vec<3> TEEpos_;
         Eigen::Vector3d poserror_;
+        Eigen::Vector3d preposeror_;
+        Eigen::Vector3d prepreposerror_;
         Eigen::VectorXd gc_init_, gv_init_, gc_, gv_;
         bool standingMode_;
         double barrierReward_;
         double terminalRewardCoeff_ = -10.0;
         double phase_;
+        double Tremain_;
+        double Tmax_;
+        double Trest_;
         double standingSmoothness_;
         double gait_hz_;
         Eigen::Vector<double,12> pTarget_, prevTarget_, prevPrevTarget_, preJointVel_;

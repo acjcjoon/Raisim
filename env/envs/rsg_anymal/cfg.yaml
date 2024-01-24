@@ -9,19 +9,19 @@ environment:
   num_threads: 60
   simulation_dt: 0.001
   control_dt: 0.01
-  max_time: 4.0
+  max_time: 6.0
   action_std: 0.3
   reward:
     comPoserror:
-      coeff: 1.0
-#    comvel:
-#      coeff: 4.0
-    comOri:
-      coeff: 5.0
+      coeff: 10.0
+    comOri1:
+      coeff: 2.5
+    comOri2:
+      coeff: 2.5
     footSlip:
-      coeff: -4e-2
+      coeff: -4e-3
     smoothness2:
-      coeff: -8e-1
+      coeff: -8e-3
     torque:
       coeff: -4e-6
     jointPos:
@@ -33,17 +33,17 @@ environment:
 #    barriersmoothness2:
 #      coeff: 1e-3
     barrierBaseMotion:
-      coeff: 1e-3
+      coeff: 4e-3
     barrierJointVel:
       coeff: 1e-3
-    barrierLimitVel:
-      coeff: 1e-3
-    barrierlimitOri:
-      coeff: 1e-3
+#    barrierLimitVel:
+#      coeff: 1e-3
+#    barrierlimitOri:
+#      coeff: 1e-3
     barrierFootContact:
-      coeff: 2e-2
+      coeff: 8e-3
     barrierFootClearance:
-      coeff: 1e-2
+      coeff: 1e-3
 architecture:
   policy_net: [ 128, 128 ]
   value_net: [ 128, 128 ]

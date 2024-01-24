@@ -15,35 +15,47 @@ environment:
     comPoserror:
       coeff: 10.0
     comOri1:
-      coeff: 2.5
+      coeff: 1.0
     comOri2:
-      coeff: 2.5
-    footSlip:
-      coeff: -4e-3
-    smoothness2:
-      coeff: -8e-3
+      coeff: 3.0
+    joint_velocity:
+      coeff: -5e-4
+    joint_acceleration:
+      coeff: -1e-8
     torque:
-      coeff: -4e-6
-    jointPos:
-      coeff: -8e-2
-    footPos:
-      coeff: -8e-2
-    barrierJointPos:
-      coeff: 1e-3
-#    barriersmoothness2:
+      coeff: -4e-7
+    smoothness1:
+      coeff: -3e-3
+    body_collison:
+      coeff: -0.2
+    stall:
+      coeff: -1e-4
+#    footSlip:
+#      coeff: -4e-3
+#    smoothness2:
+#      coeff: -8e-3
+#    torque:
+#      coeff: -4e-6
+#    jointPos:
+#      coeff: -8e-2
+#    footPos:
+#      coeff: -8e-2
+#    barrierJointPos:
 #      coeff: 1e-3
+##    barriersmoothness2:
+##      coeff: 1e-3
     barrierBaseMotion:
-      coeff: 4e-3
-    barrierJointVel:
       coeff: 1e-3
-#    barrierLimitVel:
+#    barrierJointVel:
 #      coeff: 1e-3
-#    barrierlimitOri:
+##    barrierLimitVel:
+##      coeff: 1e-3
+##    barrierlimitOri:
+##      coeff: 1e-3
+#    barrierFootContact:
+#      coeff: 8e-3
+#    barrierFootClearance:
 #      coeff: 1e-3
-    barrierFootContact:
-      coeff: 8e-3
-    barrierFootClearance:
-      coeff: 1e-3
 architecture:
   policy_net: [ 128, 128 ]
   value_net: [ 128, 128 ]
